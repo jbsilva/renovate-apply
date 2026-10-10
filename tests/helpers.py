@@ -1,14 +1,49 @@
 """
-Builders the test modules share: sample updates and a report holding them.
+Builders the test modules share: sample package files, updates, and a report holding them.
 
 Importable as ``helpers`` because ``[tool.pytest.ini_options].pythonpath`` puts ``tests`` on the
 path. Fixtures stay in conftest.py; anything a test calls directly lives here, because under
 ``--import-mode=importlib`` conftest itself is not importable by name.
 """
 
+import subprocess
+from pathlib import Path
 from typing import Any
 
 from renovate_apply.models import Update
+
+
+COMPOSE = """\
+services:
+  atuin:
+    image: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa
+  db:
+    image: postgres:18-alpine@sha256:bbbb
+"""
+
+HOOKS = """\
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff-check
+  - repo: https://github.com/crate-ci/typos
+    rev: v0.16.5
+    hooks:
+      - id: typos
+"""
+
+
+def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a git command in a test repository and fail the test when it does not work."""
+    completed = subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    return completed
 
 
 def docker_update(**overrides: object) -> Update:

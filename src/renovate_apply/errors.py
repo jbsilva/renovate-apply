@@ -27,3 +27,11 @@ class ReplaceError(RenovateApplyError):
     change nothing, or when the update uses a template feature this tool does not implement. Every
     one of these means the file must not be touched.
     """
+
+
+class GitError(RenovateApplyError):
+    """A git command failed, most often a commit a hook refused."""
+
+
+class WorkingCopyError(RenovateApplyError):
+    """The directory is not a git repository, or it has changes that a commit would swallow."""
