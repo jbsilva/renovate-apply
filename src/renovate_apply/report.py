@@ -23,6 +23,11 @@ HELD_SKIPPED = "skipped by configuration"
 HELD_LOCKFILE = "a lock file update, the manifest does not change"
 
 
+def held_repeat(first: Update) -> str:
+    """Return why a repeat of *first* is held: the edit is already the other update's."""
+    return f"the same edit as the {first.manager} update, in {first.branch_name}"
+
+
 def read_updates(report: Mapping[str, object]) -> list[Update]:
     """Return every update in the report, in the order Renovate found them."""
     return list(_iter_updates(report))

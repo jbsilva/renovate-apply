@@ -3,7 +3,15 @@
 from pathlib import Path
 
 import pytest
-from helpers import docker_update, git, hook_update, report_for, run_cli
+from helpers import (
+    WORKFLOW,
+    docker_update,
+    git,
+    hook_update,
+    report_for,
+    run_cli,
+    wrangler_updates,
+)
 
 from renovate_apply import main as main_module
 from renovate_apply.models import Update
@@ -161,3 +169,23 @@ def test_skips_a_dependency_named_on_the_command_line(
 
     assert "skipped by configuration" in capsys.readouterr().out
     assert subjects(repo)[1:] == ["deps: update crate-ci/typos to v0.16.9"]
+
+
+def test_one_line_two_managers_found_is_one_commit(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The second report of a line is held, so the run neither fails on it nor edits it twice."""
+    action, regex = wrangler_updates()
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / action.package_file).write_text(WORKFLOW, encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "workflow")
+    given_report(monkeypatch, action, regex)
+    assert run_cli(str(repo)) == 0
+
+    assert subjects(repo)[2:] == ["deps: update wrangler to 4.148.0"]
+    assert 'wranglerVersion: "4.148.0"' in (repo / action.package_file).read_text(encoding="utf-8")
+    held = "the same edit as the github-actions update, in renovate/github-actions"
+    assert f"wrangler -> 4.148.0 ({held})" in capsys.readouterr().out
