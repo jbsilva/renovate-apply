@@ -119,6 +119,8 @@ unsafe-fixes = false
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
+    # missing-trailing-comma: ruff format warns that this rule fights it, and adds the commas itself
+    "COM812",
     "CPY001", # missing-copyright-notice: this project has no copyright-header policy
     "D203",   # one-blank-line-before-class
     "D212",   # multi-line-summary-first-line
