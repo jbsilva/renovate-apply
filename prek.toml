@@ -79,6 +79,11 @@ hooks = [
   ], stages = ["commit-msg"], always_run = true },
 ]
 
+[[repos]]
+repo = "https://github.com/crate-ci/typos"
+rev = "v1.51.1"
+hooks = [{ id = "typos" }]
+
 # Local hooks run the tool already installed in the project venv, so the hook, CI, and the commands
 # AGENTS.md documents all execute the same locked version. ty also needs that venv to resolve the
 # project's own third-party imports.
