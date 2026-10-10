@@ -2,6 +2,14 @@
 # See https://prek.j178.dev for more information.
 #:schema https://www.schemastore.org/prek.json
 
+# The cspell hook below runs on the commit message, which is a stage a plain `prek install` does not
+# wire up. Naming both here means one command installs both.
+default_install_hook_types = ["pre-commit", "commit-msg"]
+
+# A hook that names no stage runs in every one of them, so without this the whole list runs a second
+# time to check the commit message.
+default_stages = ["pre-commit"]
+
 # prek runs these natively: nothing cloned, no environment, no revision to keep current.
 [[repos]]
 repo = "builtin"
@@ -54,6 +62,22 @@ hooks = [
 repo = "https://github.com/asottile/pyupgrade"
 rev = "v3.22.0"
 hooks = [{ id = "pyupgrade", args = ["--py315-plus"] }]
+
+[[repos]]
+repo = "https://github.com/streetsidesoftware/cspell-cli"
+rev = "v10.3.0"
+hooks = [
+  # Spell check changed files.
+  { id = "cspell" },
+  # Spell check the commit message.
+  { id = "cspell", name = "check commit message spelling", args = [
+    "--no-must-find-files",
+    "--no-progress",
+    "--no-summary",
+    "--files",
+    ".git/COMMIT_EDITMSG",
+  ], stages = ["commit-msg"], always_run = true },
+]
 
 # Local hooks run the tool already installed in the project venv, so the hook, CI, and the commands
 # AGENTS.md documents all execute the same locked version. ty also needs that venv to resolve the
