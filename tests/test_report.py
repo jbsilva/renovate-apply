@@ -1,10 +1,10 @@
-"""Reading Renovate's report: what it holds."""
+"""Reading Renovate's report: what it holds, and how it groups."""
 
 import pytest
 from helpers import docker_update, hook_update, report_for
 
 from renovate_apply.errors import ReportError
-from renovate_apply.report import read_updates
+from renovate_apply.report import group, read_updates
 
 
 def test_read_updates_flattens_manager_file_dependency_and_update() -> None:
@@ -29,6 +29,16 @@ def test_read_updates_ignores_a_dependency_with_no_name() -> None:
     repository = report["repositories"]["local"]
     repository["packageFiles"]["docker-compose"][0]["deps"][0].pop("depName")
     assert read_updates(report) == []
+
+
+def test_group_gathers_by_branch_in_the_order_renovate_reported() -> None:
+    """One commit per Renovate branch, and the report's order is the order of the commits."""
+    first = docker_update()
+    second = docker_update(dep_name="postgres", replace_string="postgres:18-alpine@sha256:bbbb")
+    groups = group([first, hook_update(), second])
+    assert [one.branch for one in groups] == ["renovate/stack-images", "renovate/pre-commit-hooks"]
+    assert groups[0].updates == (first, second)
+    assert groups[0].package_files == ("stack/compose.yaml",)
 
 
 def test_read_updates_rejects_a_report_with_no_repositories() -> None:

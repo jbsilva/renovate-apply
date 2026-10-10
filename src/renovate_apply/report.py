@@ -9,7 +9,7 @@ loudly in this one module instead of halfway through an edit.
 from collections.abc import Iterator, Mapping, Sequence
 
 from renovate_apply.errors import ReportError
-from renovate_apply.models import Update
+from renovate_apply.models import Group, Update
 
 
 # The local platform always names the one repository it reads "local".
@@ -19,6 +19,14 @@ LOCAL_REPOSITORY = "local"
 def read_updates(report: Mapping[str, object]) -> list[Update]:
     """Return every update in the report, in the order Renovate found them."""
     return list(_iter_updates(report))
+
+
+def group(updates: Sequence[Update]) -> list[Group]:
+    """Gather the updates by the branch Renovate would have opened, which is one commit each."""
+    branches: dict[str, list[Update]] = {}
+    for update in updates:
+        branches.setdefault(update.branch_name, []).append(update)
+    return [Group(branch, tuple(members)) for branch, members in branches.items()]
 
 
 def _iter_updates(report: Mapping[str, object]) -> Iterator[Update]:
