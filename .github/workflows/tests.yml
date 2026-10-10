@@ -1,0 +1,47 @@
+name: tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A PR branch runs under both triggers; cancel the superseded run instead of paying for it twice.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is here because this package drives git and reads package files byte for byte.
+        # Line endings and path separators are exactly the things that break there and nowhere else.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        # --locked fails on a drifted uv.lock instead of silently re-resolving it.
+        # --no-build keeps third-party sdist build code from running during install;
+        # --no-binary-package exempts renovate-apply itself, which only exists as source.
+        run: uv sync --locked --no-build --no-binary-package renovate-apply --group test
+
+      - name: Run tests
+        run: uv run --locked --no-build --no-binary-package renovate-apply pytest
