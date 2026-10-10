@@ -4,7 +4,13 @@ import pytest
 from helpers import docker_update, hook_update
 
 from renovate_apply.errors import ReplaceError
-from renovate_apply.replace import render, search_and_replacement, template_values
+from renovate_apply.replace import (
+    apply_all,
+    apply_to_text,
+    render,
+    search_and_replacement,
+    template_values,
+)
 
 
 ACTION_TEMPLATE = (
@@ -123,3 +129,78 @@ def test_search_and_replacement_refuses_an_update_with_nothing_to_find() -> None
     update = hook_update(current_value=None, current_digest=None)
     with pytest.raises(ReplaceError, match="does not say what text to replace"):
         search_and_replacement(update)
+
+
+def test_apply_to_text_replaces_the_first_match_only() -> None:
+    """Two identical references are two updates; each run moves one of them."""
+    text = "a: x:1@sha256:aaaa\nb: x:1@sha256:aaaa\n"
+    update = docker_update(
+        dep_name="x",
+        replace_string="x:1@sha256:aaaa",
+        current_value="1",
+        new_value="2",
+        new_digest="sha256:cccc",
+    )
+    assert apply_to_text(text, update) == "a: x:2@sha256:cccc\nb: x:1@sha256:aaaa\n"
+
+
+def test_apply_to_text_anchors_a_bare_version_on_the_dependency_name() -> None:
+    """Two hooks on the same rev: the one being updated is the one after its own repository."""
+    text = (
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.16.5\n"
+        "  - repo: https://github.com/crate-ci/typos\n    rev: v0.16.5\n"
+    )
+    updated = apply_to_text(text, hook_update())
+    assert "ruff-pre-commit\n    rev: v0.16.5" in updated
+    assert "typos\n    rev: v0.16.9" in updated
+
+
+def test_apply_to_text_says_so_when_the_text_has_already_moved() -> None:
+    """A file that no longer holds what the report described is never rewritten on a guess."""
+    with pytest.raises(ReplaceError, match="is not in"):
+        apply_to_text("nothing here\n", docker_update())
+
+
+def test_apply_all_edits_a_reference_that_is_really_in_the_file_twice() -> None:
+    """An action used by two jobs is two updates and two lines, one edit each."""
+    text = "  uses: a/b@aaa # v1\n  run: x\n  uses: a/b@aaa # v1\n"
+    update = docker_update(
+        manager="github-actions",
+        dep_name="a/b",
+        current_value="v1",
+        new_value="v2",
+        current_digest="aaa",
+        new_digest="ccc",
+        replace_string="a/b@aaa # v1",
+        replace_template=ACTION_TEMPLATE,
+    )
+    assert apply_all(text, [update, update]) == (
+        "  uses: a/b@ccc # v2\n  run: x\n  uses: a/b@ccc # v2\n"
+    )
+
+
+def test_apply_all_skips_a_repeat_of_a_line_that_is_in_the_file_once() -> None:
+    """
+    A Dockerfile ARG two FROM stages share is two dependencies over one line.
+
+    Renovate reports the dependency once per use, so the second update has nothing left to do. It is
+    the same edit already made, not a file that moved: make it once and carry on.
+    """
+    text = "ARG BASE=img:latest@sha256:aaaa\nFROM ${BASE} AS build\nFROM ${BASE} AS final\n"
+    update = docker_update(
+        manager="dockerfile",
+        dep_name="img",
+        current_value="latest",
+        new_value="latest",
+        replace_string="ARG BASE=img:latest@sha256:aaaa",
+        replace_template="ARG BASE=img:latest@{{newDigest}}",
+    )
+    assert apply_all(text, [update, update]) == (
+        "ARG BASE=img:latest@sha256:cccc\nFROM ${BASE} AS build\nFROM ${BASE} AS final\n"
+    )
+
+
+def test_apply_all_still_refuses_a_first_edit_it_cannot_place() -> None:
+    """Skipping a repeat never becomes skipping the edit itself: the first miss is still a fault."""
+    with pytest.raises(ReplaceError, match="is not in"):
+        apply_all("nothing here\n", [docker_update(), docker_update()])

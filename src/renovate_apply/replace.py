@@ -11,11 +11,15 @@ Two managers give less than that:
 - Some give a ``replaceString`` and no template. The new text is then the old text with the version
   and the digest substituted, which is Renovate's own fallback.
 - Some give neither, the pre-commit manager among them. The text to look for is then the bare
-  version.
+  version, and it is looked for after the dependency's name, so a version that two hooks happen to
+  share cannot send the edit to the wrong one.
+
+A dependency is reported once per use, so the updates of one file are made in order and each one
+searches on from the last, which is what keeps a line used twice from being edited twice over.
 """
 
 import re
-lazy from collections.abc import Mapping
+lazy from collections.abc import Mapping, Sequence
 
 from renovate_apply.errors import ReplaceError
 lazy from renovate_apply.models import Update
@@ -74,6 +78,33 @@ def search_and_replacement(update: Update) -> tuple[str, str]:
     return search, replacement
 
 
+def apply_to_text(text: str, update: Update) -> str:
+    """Return *text* with this one update made, leaving everything else byte for byte."""
+    return apply_all(text, [update])
+
+
+def apply_all(text: str, updates: Sequence[Update]) -> str:
+    """
+    Return *text* with every one of *updates* made, in the order the report gave them.
+
+    Renovate reports a dependency once per use, not once per line, so one line can come back more
+    than once: a Dockerfile ``ARG`` that two ``FROM`` stages share is two dependencies carrying the
+    same ``replaceString``. Each repeat therefore looks on from where the edit before it ended. A
+    string that really is in the file twice is edited twice, and a repeat with nothing left to find
+    is a line this run already updated, not a file that moved underneath the report.
+    """
+    resume: dict[tuple[str, str], int] = {}
+    for update in updates:
+        search, replacement = search_and_replacement(update)
+        key = (search, replacement)
+        at = _locate(text, update, search, resume.get(key))
+        if at is None:
+            continue
+        text = text[:at] + replacement + text[at + len(search) :]
+        resume[key] = at + len(replacement)
+    return text
+
+
 def _search_string(update: Update) -> str:
     """Return the text the manager found, or the bare version when it reported none."""
     if update.replace_string is not None:
@@ -97,6 +128,35 @@ def _replacement_string(update: Update, search: str) -> str:
     if _moves(update.current_digest, update.new_digest):
         replacement = replacement.replace(str(update.current_digest), str(update.new_digest), 1)
     return replacement
+
+
+def _locate(text: str, update: Update, search: str, resume: int | None) -> int | None:
+    """
+    Return where the text to replace starts, refusing to guess when it is not there.
+
+    *resume* is where the last edit of this same text ended, or None when this is the first of them.
+    Once one edit has been made, the text being gone means the repeat has nothing left to do, which
+    is None. Not finding it on the first try is a file the report no longer describes.
+    """
+    at = text.find(search, _anchor(text, update) if resume is None else resume)
+    if at >= 0:
+        return at
+    if resume is not None:
+        return None
+    msg = f"{update.dep_name}: {search!r} is not in {update.package_file}. Was it already updated?"
+    raise ReplaceError(msg)
+
+
+def _anchor(text: str, update: Update) -> int:
+    """
+    Return where to start looking for the first edit of a dependency.
+
+    With no ``replaceString`` the search text is a bare version, so the dependency's name anchors
+    it: the version that belongs to this dependency is the first one after its name.
+    """
+    if update.replace_string is not None:
+        return 0
+    return max(text.find(update.dep_name), 0)
 
 
 def _moves(current: str | None, new: str | None) -> bool:
