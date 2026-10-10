@@ -106,6 +106,22 @@ def test_scan_reports_a_failed_run_with_its_last_words(
         scan(tmp_path, token="")
 
 
+def test_scan_failure_keeps_the_fatal_error_past_the_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Renovate logs its fatal error to stdout, so warnings on stderr must not push it out."""
+    monkeypatch.setattr(shutil, "which", lambda _name: f"/usr/bin/{_name}")
+    warnings = "\n".join(f"npm warn {number}" for number in range(20))
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        fake_run(returncode=1, stdout="FATAL: Authentication failure", stderr=warnings),
+    )
+    with pytest.raises(ScanError, match="Authentication failure"):
+        scan(tmp_path, token="")
+
+
 def test_scan_reports_a_run_that_wrote_nothing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

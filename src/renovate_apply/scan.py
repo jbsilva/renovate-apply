@@ -112,5 +112,6 @@ def _load(report: Path) -> dict[str, object]:
 
 def _tail(completed: subprocess.CompletedProcess[str], lines: int = 15) -> str:
     """Return the last lines of a failed run, which is where Renovate says what went wrong."""
-    output = (completed.stderr or completed.stdout or "").strip()
+    # Renovate logs its fatal error to stdout, so stdout goes last where the tail keeps it.
+    output = f"{completed.stderr}\n{completed.stdout}".strip()
     return "\n".join(output.splitlines()[-lines:])
