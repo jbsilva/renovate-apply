@@ -2,7 +2,8 @@
 Write the commit message for a group of updates.
 
 The subject says what a person needs to see in ``git log --oneline``: one image and its new version,
-or the directory whose images moved.
+or the directory whose images moved. The body lists every dependency in the group, aligned, so the
+detail is one ``git show`` away without being in the subject line.
 
 The prefix is a setting because Renovate's own is: ``commitMessagePrefix: "deps:"`` and
 ``semanticCommits`` produce different first words, and a repository has one of them, not both.
@@ -24,9 +25,39 @@ def subject(group: Group, prefix: str = DEFAULT_PREFIX) -> str:
     return f"{prefix} {_summary(group)}".strip()
 
 
+def moves(group: Group) -> list[tuple[str, str]]:
+    """
+    Return this group's "what moved" pairs, each once, in the order Renovate reported them.
+
+    A dependency is reported once per use, so an action two jobs run and a base image two stages
+    share are several updates all saying the same thing. Each is its own edit, but naming it more
+    than once in a commit body tells the reader nothing, so the repeats are collapsed here.
+    """
+    return list(dict.fromkeys((update.dep_name, update.describe()) for update in group.updates))
+
+
+def body(group: Group) -> str:
+    """Return the aligned "what moved" list, one dependency per line."""
+    lines = moves(group)
+    width = max(len(name) for name, _ in lines)
+    return "\n".join(f"{name.ljust(width)}  {moved}" for name, moved in lines)
+
+
+def message(group: Group, prefix: str = DEFAULT_PREFIX) -> list[str]:
+    """
+    Return the commit message as the paragraphs git should be given.
+
+    A group that moves one thing says everything in its subject already, so it gets no body.
+    """
+    paragraphs = [subject(group, prefix)]
+    if len(moves(group)) > 1:
+        paragraphs.append(body(group))
+    return paragraphs
+
+
 def _summary(group: Group) -> str:
     """Return the subject without its prefix."""
-    if len(group.updates) == 1:
+    if len(moves(group)) == 1:
         only = group.updates[0]
         if only.digest_only:
             return f"update the {only.dep_name} digest"

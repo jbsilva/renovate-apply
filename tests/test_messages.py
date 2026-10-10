@@ -2,7 +2,7 @@
 
 from helpers import docker_update, hook_update
 
-from renovate_apply.messages import subject
+from renovate_apply.messages import body, message, subject
 from renovate_apply.models import Group, Update
 
 
@@ -60,3 +60,35 @@ def test_subject_falls_back_to_the_group_name_renovate_chose() -> None:
 def test_subject_takes_the_prefix_the_repository_uses() -> None:
     """A project on semantic commits writes build(deps):, and Renovate's own commits would too."""
     assert subject(group_of(docker_update()), "build(deps):").startswith("build(deps): update ")
+
+
+def test_body_aligns_the_names_and_spells_out_a_digest_move() -> None:
+    """The body is read in a terminal, so the versions line up under each other."""
+    group = group_of(
+        docker_update(),
+        docker_update(dep_name="postgres", update_type="digest", new_value="18-alpine"),
+    )
+    assert body(group).splitlines() == [
+        "ghcr.io/atuinsh/atuin  v18.13.3 -> 18.22.0",
+        "postgres               v18.13.3, new digest",
+    ]
+
+
+def test_body_names_a_dependency_used_twice_only_once() -> None:
+    """
+    An action two jobs run is two updates and two edits, but one thing to say about it.
+
+    Renovate reports a dependency once per use, so a group can hold the same move several times
+    over. Each is still its own edit; the commit body just does not repeat itself.
+    """
+    action = docker_update(manager="github-actions", package_file=".github/workflows/ci.yml")
+    group = group_of(action, action)
+    assert body(group).splitlines() == ["ghcr.io/atuinsh/atuin  v18.13.3 -> 18.22.0"]
+
+
+def test_message_gives_a_group_of_one_no_body() -> None:
+    """Repeating the subject underneath it says nothing new."""
+    action = docker_update(manager="github-actions", package_file=".github/workflows/ci.yml")
+    assert len(message(group_of(docker_update()))) == 1
+    assert len(message(group_of(action, action))) == 1
+    assert len(message(group_of(docker_update(), docker_update(dep_name="postgres")))) == 2

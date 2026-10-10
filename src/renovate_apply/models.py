@@ -52,6 +52,11 @@ class Update:
     """Set only when Renovate wants to replace the dependency with a different one."""
 
     @property
+    def current(self) -> str:
+        """Return what the file says now, for display."""
+        return self.current_value or self.current_digest or "?"
+
+    @property
     def new(self) -> str:
         """Return what the file will say, for display."""
         return self.new_value or self.new_digest or "?"
@@ -66,6 +71,12 @@ class Update:
         """Return the directory of the package file, empty for a file at the repository root."""
         parent = PurePosixPath(self.package_file).parent
         return "" if parent == PurePosixPath(".") else str(parent)
+
+    def describe(self) -> str:
+        """Return the one-line "what moved" text used in commit bodies and in the terminal."""
+        if self.digest_only:
+            return f"{self.current}, new digest"
+        return f"{self.current} -> {self.new}"
 
 
 @dataclass(frozen=True, slots=True)
