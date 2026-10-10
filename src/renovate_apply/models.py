@@ -100,3 +100,11 @@ class Group:
     def directories(self) -> frozenset[str]:
         """Return the set of directories this group touches."""
         return frozenset(update.directory for update in self.updates)
+
+
+@dataclass(frozen=True, slots=True)
+class Held:
+    """An update that was found and deliberately not applied, with the reason to report."""
+
+    update: Update
+    reason: str

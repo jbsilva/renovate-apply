@@ -25,9 +25,9 @@ from renovate_apply.errors import RenovateApplyError
 from renovate_apply.files import apply_group
 from renovate_apply.git import commit, require_clean, require_repository
 from renovate_apply.messages import message, moves
-from renovate_apply.report import group, read_updates
+from renovate_apply.report import group, read_updates, split
 from renovate_apply.scan import scan
-lazy from renovate_apply.models import Group
+lazy from renovate_apply.models import Group, Held
 
 
 app = App(
@@ -50,6 +50,7 @@ def apply_updates(
     dry_run: bool = False,
     # Named --commit so cyclopts derives the negative as --no-commit, which is what is typed.
     commit_each: Annotated[bool, Parameter(name="--commit")] = True,
+    major: bool = False,
 ) -> None:
     """
     Apply the updates Renovate finds, one commit per group.
@@ -63,21 +64,29 @@ def apply_updates(
     commit_each
         Commit each group as it is applied. ``--no-commit`` writes the files and stops, for one
         review of everything at once.
+    major
+        Include major updates, which are held back by default.
     """
     root = directory.resolve()
     committing = commit_each and not dry_run
     try:
-        groups = _plan(root, committing=committing)
+        groups, held = _plan(root, major=major, committing=committing)
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
     failed = _perform(root, groups, dry_run=dry_run, committing=committing)
+    _report_held(held)
     _report_outcome(groups, failed, dry_run=dry_run, committing=committing)
     if failed:
         raise SystemExit(1)
 
 
-def _plan(root: Path, *, committing: bool) -> list[Group]:
+def _plan(
+    root: Path,
+    *,
+    major: bool,
+    committing: bool,
+) -> tuple[list[Group], list[Held]]:
     """Check the working copy, run the scan, and return what to do with what came back."""
     require_repository(root)
     if committing:
@@ -85,7 +94,8 @@ def _plan(root: Path, *, committing: bool) -> list[Group]:
 
     err.print(f"renovate-apply: scanning {root} ...", style="dim")
     report = scan(root)
-    return group(read_updates(report))
+    to_apply, held = split(read_updates(report), with_major=major)
+    return group(to_apply), held
 
 
 def _perform(root: Path, groups: list[Group], *, dry_run: bool, committing: bool) -> list[Group]:
@@ -117,6 +127,18 @@ def _perform_group(root: Path, one: Group, *, dry_run: bool, committing: bool) -
         out.print(f"    {name}  {moved}")
     if committing:
         commit(root, package_files, paragraphs)
+
+
+def _report_held(held: list[Held]) -> None:
+    """List what was found and deliberately left alone, each thing once."""
+    if not held:
+        return
+    lines = dict.fromkeys(
+        f"  {one.update.dep_name} -> {one.update.new} ({one.reason})" for one in held
+    )
+    out.print("\nHeld back:", style="bold")
+    for line in lines:
+        out.print(line)
 
 
 def _report_outcome(

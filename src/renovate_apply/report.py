@@ -1,5 +1,5 @@
 """
-Turn Renovate's report into a flat list of updates.
+Turn Renovate's report into a flat list of updates, and say what is not going to be applied.
 
 The report nests manager, package file, dependency and update. Everything here flattens that and
 narrows the JSON into the typed objects in ``models``, so a shape Renovate changes later fails
@@ -9,16 +9,41 @@ loudly in this one module instead of halfway through an edit.
 from collections.abc import Iterator, Mapping, Sequence
 
 from renovate_apply.errors import ReportError
-from renovate_apply.models import Group, Update
+from renovate_apply.models import Group, Held, Update
 
 
 # The local platform always names the one repository it reads "local".
 LOCAL_REPOSITORY = "local"
 
+HELD_MAJOR = "major, use --major to include it"
+
 
 def read_updates(report: Mapping[str, object]) -> list[Update]:
     """Return every update in the report, in the order Renovate found them."""
     return list(_iter_updates(report))
+
+
+def split(
+    updates: Sequence[Update],
+    *,
+    with_major: bool,
+) -> tuple[list[Update], list[Held]]:
+    """
+    Split the updates into the ones to apply and the ones to hold back, with a reason each.
+
+    A major is held unless asked for. Renovate can be configured to send some majors to the
+    dependency dashboard for approval by hand, and the report does not say which ones carry that
+    flag, so holding every major is the only reading that cannot contradict the configuration.
+    """
+    to_apply: list[Update] = []
+    held: list[Held] = []
+    for update in updates:
+        reason = _hold_reason(update, with_major=with_major)
+        if reason is None:
+            to_apply.append(update)
+        else:
+            held.append(Held(update, reason))
+    return to_apply, held
 
 
 def group(updates: Sequence[Update]) -> list[Group]:
@@ -27,6 +52,13 @@ def group(updates: Sequence[Update]) -> list[Group]:
     for update in updates:
         branches.setdefault(update.branch_name, []).append(update)
     return [Group(branch, tuple(members)) for branch, members in branches.items()]
+
+
+def _hold_reason(update: Update, *, with_major: bool) -> str | None:
+    """Return why this update is not applied, or None when it is."""
+    if update.update_type == "major" and not with_major:
+        return HELD_MAJOR
+    return None
 
 
 def _iter_updates(report: Mapping[str, object]) -> Iterator[Update]:

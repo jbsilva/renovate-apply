@@ -1,10 +1,15 @@
-"""Reading Renovate's report: what it holds, and how it groups."""
+"""Reading Renovate's report: what it holds, what is held back, and how it groups."""
 
 import pytest
 from helpers import docker_update, hook_update, report_for
 
 from renovate_apply.errors import ReportError
-from renovate_apply.report import group, read_updates
+from renovate_apply.report import (
+    HELD_MAJOR,
+    group,
+    read_updates,
+    split,
+)
 
 
 def test_read_updates_flattens_manager_file_dependency_and_update() -> None:
@@ -29,6 +34,18 @@ def test_read_updates_ignores_a_dependency_with_no_name() -> None:
     repository = report["repositories"]["local"]
     repository["packageFiles"]["docker-compose"][0]["deps"][0].pop("depName")
     assert read_updates(report) == []
+
+
+def test_split_holds_a_major_until_it_is_asked_for() -> None:
+    """A major waits, because the report does not say whether it needs approval by hand."""
+    major = docker_update(update_type="major", new_value="19.0.0")
+    to_apply, held = split([major], with_major=False)
+    assert to_apply == []
+    assert held[0].reason == HELD_MAJOR
+
+    wanted, none_held = split([major], with_major=True)
+    assert wanted == [major]
+    assert none_held == []
 
 
 def test_group_gathers_by_branch_in_the_order_renovate_reported() -> None:

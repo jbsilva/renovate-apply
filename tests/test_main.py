@@ -75,6 +75,32 @@ def test_refuses_to_commit_on_a_dirty_working_copy(
     assert "working copy has changes" in capsys.readouterr().err
 
 
+def test_holds_a_major_and_says_so(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A major is reported, not applied, until it is asked for by name."""
+    given_report(monkeypatch, docker_update(update_type="major", new_value="19.0.0"))
+    assert run_cli(str(repo)) == 0
+
+    output = capsys.readouterr().out
+    assert "Held back" in output
+    assert "Nothing to apply." in output
+    assert len(subjects(repo)) == 1
+
+
+def test_applies_a_major_when_it_is_asked_for(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--major is the answer to the hold, and it commits like anything else."""
+    given_report(monkeypatch, docker_update(update_type="major", new_value="19.0.0"))
+    assert run_cli(str(repo), "--major") == 0
+
+    assert subjects(repo)[-1] == "deps: update ghcr.io/atuinsh/atuin to 19.0.0"
+
+
 def test_stops_when_a_file_no_longer_holds_what_the_report_described(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
