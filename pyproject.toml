@@ -29,6 +29,11 @@ classifiers = [
 ]
 dependencies = []
 
+[dependency-groups]
+dev = [
+    "ruff>=0.17.0",
+]
+
 [project.urls]
 Repository = "https://github.com/jbsilva/renovate-apply"
 Issues = "https://github.com/jbsilva/renovate-apply/issues"
@@ -36,6 +41,40 @@ Issues = "https://github.com/jbsilva/renovate-apply/issues"
 [tool.uv]
 exclude-newer = "1 day"
 
+[tool.uv.exclude-newer-package]
+ruff = "6 hours"
+
 [build-system]
 requires = ["uv_build>=0.12.23,<1.0.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+indent-width = 4
+target-version = "py315"
+fix = true
+unsafe-fixes = false
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "CPY001", # missing-copyright-notice: this project has no copyright-header policy
+    "D203",   # one-blank-line-before-class
+    "D212",   # multi-line-summary-first-line
+    "D413",   # blank-line-after-last-section
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = [
+    "D104", # Allow empty __init__.py files
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-wrap-aliases = true
+lines-after-imports = 2
