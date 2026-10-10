@@ -36,15 +36,24 @@ def require_repository(root: Path) -> None:
 
 
 def require_clean(root: Path) -> None:
-    """Raise when anything is modified or staged, naming what is in the way."""
-    completed = run(root, "status", "--porcelain")
+    """
+    Raise when a tracked file is modified or staged, naming what is in the way.
+
+    A staged change is already in the index the commit takes. An unstaged one reaches the commit
+    when it sits in a package file this run also edits, because staging that file stages all of it.
+
+    Untracked files are not counted. ``git add`` is given the files this wrote and nothing else, so
+    no untracked file can reach the commit, and a scratch file left in the tree is no reason to
+    refuse a whole run.
+    """
+    completed = run(root, "status", "--porcelain", "--untracked-files=no")
     if completed.returncode != 0:
         msg = f"git status failed: {completed.stderr.strip()}"
         raise GitError(msg)
     changed = completed.stdout.strip()
     if changed:
         msg = (
-            "the working copy has changes in it, and a commit would take them too. "
+            "the working copy has changes to tracked files, and a commit would take them too. "
             f"Commit or stash them first:\n{changed}"
         )
         raise WorkingCopyError(msg)

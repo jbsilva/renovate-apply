@@ -27,11 +27,30 @@ def test_require_clean_passes_on_a_clean_tree(repo: Path) -> None:
     require_clean(repo)
 
 
-def test_require_clean_names_what_is_in_the_way(repo: Path) -> None:
-    """A commit would swallow an unrelated change, so the error lists it."""
+def test_require_clean_names_the_tracked_file_in_the_way(repo: Path) -> None:
+    """Staging a package file stages all of it, so an edit in flight would ride along."""
+    (repo / "stack" / "compose.yaml").write_text("image: half done\n", encoding="utf-8")
+    with pytest.raises(WorkingCopyError, match=r"compose\.yaml"):
+        require_clean(repo)
+
+
+def test_require_clean_rejects_a_staged_change(repo: Path) -> None:
+    """A commit takes the index, so anything already staged is already in it."""
     (repo / "notes.txt").write_text("in progress\n", encoding="utf-8")
+    git(repo, "add", "notes.txt")
     with pytest.raises(WorkingCopyError, match=r"notes\.txt"):
         require_clean(repo)
+
+
+def test_require_clean_ignores_an_untracked_file(repo: Path) -> None:
+    """
+    A scratch file cannot reach a commit, so it is no reason to refuse the run.
+
+    The commit stages the files this run wrote, by name, and then takes the index. An untracked file
+    is in neither, as test_commit_stages_only_the_files_it_was_given shows.
+    """
+    (repo / "notes.txt").write_text("in progress\n", encoding="utf-8")
+    require_clean(repo)
 
 
 def test_commit_stages_only_the_files_it_was_given(repo: Path) -> None:

@@ -77,11 +77,24 @@ def test_refuses_to_commit_on_a_dirty_working_copy(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A commit takes the whole index, so an unrelated change stops the run before the scan."""
-    (repo / "notes.txt").write_text("in progress\n", encoding="utf-8")
+    """A commit takes the whole index, so a tracked change stops the run before the scan."""
+    (repo / ".pre-commit-config.yaml").write_text("half done\n", encoding="utf-8")
     given_report(monkeypatch, docker_update())
     assert run_cli(str(repo)) == 1
     assert "working copy has changes" in capsys.readouterr().err
+
+
+def test_an_untracked_file_does_not_stop_the_run(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing untracked reaches a commit, so a scratch file in the tree is not in the way."""
+    (repo / "notes.txt").write_text("in progress\n", encoding="utf-8")
+    given_report(monkeypatch, docker_update())
+    assert run_cli(str(repo)) == 0
+
+    assert subjects(repo)[1:] == ["deps: update ghcr.io/atuinsh/atuin to 18.22.0"]
+    assert git(repo, "status", "--porcelain").stdout.strip() == "?? notes.txt"
 
 
 def test_holds_a_major_and_says_so(
