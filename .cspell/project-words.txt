@@ -29,6 +29,7 @@ relock
 relocked
 relocks
 renovatebot
+rnv
 sarif
 scannerwork
 sonarcloud
