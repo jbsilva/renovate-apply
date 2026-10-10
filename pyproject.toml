@@ -41,6 +41,7 @@ dev = [
 test = [
     "pytest-cov>=7.1.0",
     "pytest-random-order>=1.2.0",
+    "pytest-xdist[psutil]>=3.8.0",
     "pytest>=9.1.1",
 ]
 
@@ -180,6 +181,8 @@ addopts = [
     "--durations=10",
     "--import-mode=importlib",
     "--random-order",
+    "--numprocesses=logical",
+    "--dist=load",
     "--tb=short",
     "--verbose",
     "--cov=src/renovate_apply",
