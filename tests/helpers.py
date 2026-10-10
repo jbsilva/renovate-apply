@@ -1,5 +1,5 @@
 """
-Builders the test modules share: sample updates.
+Builders the test modules share: sample updates and a report holding them.
 
 Importable as ``helpers`` because ``[tool.pytest.ini_options].pythonpath`` puts ``tests`` on the
 path. Fixtures stay in conftest.py; anything a test calls directly lives here, because under
@@ -45,3 +45,43 @@ def hook_update(**overrides: object) -> Update:
     }
     fields.update(overrides)
     return Update(**fields)
+
+
+def report_for(*updates: Update) -> dict[str, Any]:
+    """Build a Renovate report holding *updates*, nested the way the real one is."""
+    package_files: dict[str, list[dict[str, object]]] = {}
+    for update in updates:
+        entry: dict[str, object] = {
+            "depName": update.dep_name,
+            "currentValue": update.current_value,
+            "currentDigest": update.current_digest,
+            "replaceString": update.replace_string,
+            "autoReplaceStringTemplate": update.replace_template,
+            "updates": [
+                {
+                    "updateType": update.update_type,
+                    "branchName": update.branch_name,
+                    "newValue": update.new_value,
+                    "newDigest": update.new_digest,
+                    "newName": update.new_name,
+                },
+            ],
+        }
+        _add(package_files.setdefault(update.manager, []), update.package_file, entry)
+    return {
+        "problems": [],
+        "repositories": {
+            "local": {"problems": [], "branches": [], "packageFiles": package_files},
+        },
+    }
+
+
+def _add(files: list[dict[str, object]], package_file: str, entry: dict[str, object]) -> None:
+    """Put a dependency under its package file, adding the file the first time it is seen."""
+    for existing in files:
+        if existing["packageFile"] == package_file:
+            deps = existing["deps"]
+            assert isinstance(deps, list)
+            deps.append(entry)
+            return
+    files.append({"packageFile": package_file, "deps": [entry]})

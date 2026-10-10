@@ -11,6 +11,10 @@ class RenovateApplyError(Exception):
     """Base for all renovate-apply domain errors."""
 
 
+class ReportError(RenovateApplyError):
+    """The report Renovate wrote is not the shape this tool can read."""
+
+
 class ReplaceError(RenovateApplyError):
     """
     An update cannot be turned into an edit.
