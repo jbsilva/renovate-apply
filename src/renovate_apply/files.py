@@ -6,11 +6,12 @@ CRLF files would otherwise come back rewritten from top to bottom, and the one-l
 promises would be the whole file.
 """
 
+lazy from collections.abc import Sequence
 lazy from pathlib import Path
 
 from renovate_apply.errors import ReplaceError
-from renovate_apply.replace import apply_all
-lazy from renovate_apply.models import Group
+from renovate_apply.replace import apply_all, same_edit
+lazy from renovate_apply.models import Group, Update
 
 
 ENCODING = "utf-8"
@@ -30,6 +31,36 @@ def apply_group(root: Path, group: Group, *, write: bool = True) -> tuple[str, .
         if write:
             _write(path, text)
     return group.package_files
+
+
+def split_repeats(
+    root: Path,
+    updates: Sequence[Update],
+) -> tuple[list[Update], list[tuple[Update, Update]]]:
+    """
+    Split off each update that makes the same edit as one before it, found by another manager.
+
+    Returns the updates to keep, and each repeat paired with the update it repeats.
+    """
+    kept: list[Update] = []
+    repeats: list[tuple[Update, Update]] = []
+    texts: dict[str, str] = {}
+    for update in updates:
+        first = next((one for one in kept if _same_edit(root, texts, one, update)), None)
+        if first is None:
+            kept.append(update)
+        else:
+            repeats.append((update, first))
+    return kept, repeats
+
+
+def _same_edit(root: Path, texts: dict[str, str], first: Update, second: Update) -> bool:
+    """Compare two updates against their file, reading each file once."""
+    if first.package_file != second.package_file:
+        return False
+    if first.package_file not in texts:
+        texts[first.package_file] = _read(root / first.package_file)
+    return same_edit(texts[first.package_file], first, second)
 
 
 def _read(path: Path) -> str:

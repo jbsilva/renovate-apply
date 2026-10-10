@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pytest
-from helpers import docker_update
+from helpers import WORKFLOW, docker_update, wrangler_updates
 
 from renovate_apply.errors import ReplaceError
-from renovate_apply.files import apply_group
+from renovate_apply.files import apply_group, split_repeats
 from renovate_apply.models import Group
 
 
@@ -62,3 +62,13 @@ def test_apply_group_reports_a_file_it_cannot_read(tmp_path: Path) -> None:
     """A package file the report names and the disk does not have is a fault, not a skip."""
     with pytest.raises(ReplaceError, match="cannot read"):
         apply_group(tmp_path, Group("renovate/stack-images", (docker_update(),)))
+
+
+def test_split_repeats_keeps_the_first_of_one_edit_found_twice(tmp_path: Path) -> None:
+    """The later report of the same line is paired with the update that already makes the edit."""
+    action, regex = wrangler_updates()
+    path = tmp_path / action.package_file
+    path.parent.mkdir(parents=True)
+    path.write_text(WORKFLOW, encoding="utf-8")
+    other = docker_update()
+    assert split_repeats(tmp_path, [action, other, regex]) == ([action, other], [(regex, action)])
