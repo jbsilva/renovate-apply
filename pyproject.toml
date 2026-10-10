@@ -29,6 +29,10 @@ classifiers = [
 ]
 dependencies = []
 
+[project.urls]
+Repository = "https://github.com/jbsilva/renovate-apply"
+Issues = "https://github.com/jbsilva/renovate-apply/issues"
+
 [project.scripts]
 renovate-apply = "renovate_apply:main"
 
