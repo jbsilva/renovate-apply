@@ -19,6 +19,19 @@ repo = "https://github.com/astral-sh/uv-pre-commit"
 rev = "0.13.0"
 hooks = [{ id = "uv-lock" }]
 
+# Docformatter: format docstrings and make sure we use 100 columns.
+# See [tool.docformatter] in pyproject.toml. Must run before ruff.
+[[repos]]
+repo = "https://github.com/PyCQA/docformatter"
+rev = "v1.7.8"
+hooks = [
+  { id = "docformatter", args = [
+    "--in-place",
+    "--config",
+    "./pyproject.toml",
+  ] },
+]
+
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
 rev = "v0.17.0"
