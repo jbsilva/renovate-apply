@@ -13,5 +13,8 @@ wheels/
 .coverage
 lcov.info
 
+# sonar-scanner working directory
+.scannerwork
+
 # Generated CI artifacts (coverage.xml, ruff/bandit reports, scan logs)
 reports/

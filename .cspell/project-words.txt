@@ -12,6 +12,7 @@ fstrings
 gpgconf
 gpgsign
 jbsilva
+JRE
 lockfiles
 mdformat
 NOSONAR
