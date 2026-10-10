@@ -1,13 +1,14 @@
 """The replacement engine: rendering Renovate's templates and finding what to swap."""
 
 import pytest
-from helpers import docker_update, hook_update
+from helpers import WORKFLOW, docker_update, hook_update, wrangler_updates
 
 from renovate_apply.errors import ReplaceError
 from renovate_apply.replace import (
     apply_all,
     apply_to_text,
     render,
+    same_edit,
     search_and_replacement,
     template_values,
 )
@@ -204,3 +205,27 @@ def test_apply_all_still_refuses_a_first_edit_it_cannot_place() -> None:
     """Skipping a repeat never becomes skipping the edit itself: the first miss is still a fault."""
     with pytest.raises(ReplaceError, match="is not in"):
         apply_all("nothing here\n", [docker_update(), docker_update()])
+
+
+def test_same_edit_is_one_line_two_managers_found() -> None:
+    """A regex manager and a built-in one on the same line make one edit, not two."""
+    action, regex = wrangler_updates()
+    assert same_edit(WORKFLOW, action, regex)
+
+
+def test_same_edit_needs_both_to_write_the_same_version() -> None:
+    """Two managers that disagree on the new version are not one edit; the second still fails."""
+    action, regex = wrangler_updates(new_value="5.0.0")
+    assert not same_edit(WORKFLOW, action, regex)
+
+
+def test_same_edit_leaves_two_uses_from_one_manager_alone() -> None:
+    """One manager reporting the same text twice is two uses, which apply_all edits one by one."""
+    _, regex = wrangler_updates()
+    assert not same_edit(WORKFLOW, regex, regex)
+
+
+def test_same_edit_is_not_an_edit_that_cannot_be_placed() -> None:
+    """When either edit misses the file, nothing is shown to be the same, and nothing is dropped."""
+    action, regex = wrangler_updates(replace_string='wranglerVersion: "4.0.0"')
+    assert not same_edit(WORKFLOW, action, regex)

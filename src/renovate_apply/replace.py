@@ -83,6 +83,22 @@ def apply_to_text(text: str, update: Update) -> str:
     return apply_all(text, [update])
 
 
+def same_edit(text: str, first: Update, second: Update) -> bool:
+    """
+    Say whether two managers found the same use of a dependency and agree on its new text.
+
+    A repository's regex manager can find a line a built-in manager also finds, and Renovate then
+    reports it twice, on two branches. Made once, the line no longer holds what the second expects.
+    Within one manager two equal edits are two uses, which ``apply_all`` makes one after the other.
+    """
+    if first.manager == second.manager or first.package_file != second.package_file:
+        return False
+    try:
+        return apply_to_text(text, first) == apply_to_text(text, second)
+    except ReplaceError:
+        return False
+
+
 def apply_all(text: str, updates: Sequence[Update]) -> str:
     """
     Return *text* with every one of *updates* made, in the order the report gave them.

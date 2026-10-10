@@ -138,3 +138,42 @@ def _add(files: list[dict[str, object]], package_file: str, entry: dict[str, obj
             deps.append(entry)
             return
     files.append({"packageFile": package_file, "deps": [entry]})
+
+
+WORKFLOW = """\
+jobs:
+  deploy:
+    steps:
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          wranglerVersion: "4.139.0"
+"""
+
+
+def wrangler_updates(**overrides: object) -> tuple[Update, Update]:
+    """
+    Return one line found twice: by the github-actions manager and by a repository's regex manager.
+
+    Renovate reports each on its own branch, with its own way of finding the text.
+    """
+    action = Update(
+        manager="github-actions",
+        package_file=".github/workflows/deploy.yml",
+        dep_name="wrangler",
+        update_type="minor",
+        branch_name="renovate/github-actions",
+        current_value="4.139.0",
+        new_value="4.148.0",
+    )
+    fields: dict[str, Any] = {
+        "manager": "regex",
+        "package_file": action.package_file,
+        "dep_name": "wrangler",
+        "update_type": "minor",
+        "branch_name": "renovate/tools",
+        "current_value": "4.139.0",
+        "new_value": "4.148.0",
+        "replace_string": 'wranglerVersion: "4.139.0"',
+    }
+    fields.update(overrides)
+    return action, Update(**fields)
