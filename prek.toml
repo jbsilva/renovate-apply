@@ -44,3 +44,20 @@ hooks = [
 repo = "https://github.com/asottile/pyupgrade"
 rev = "v3.22.0"
 hooks = [{ id = "pyupgrade", args = ["--py315-plus"] }]
+
+# Local hooks run the tool already installed in the project venv, so the hook, CI, and the commands
+# AGENTS.md documents all execute the same locked version. ty also needs that venv to resolve the
+# project's own third-party imports.
+[[repos]]
+repo = "local"
+
+# Whole project, never a file list: a change in one file can break a caller in another.
+[[repos.hooks]]
+id = "ty"
+name = "ty type check"
+entry = "uv run ty check"
+language = "system"
+types = ["python"]
+pass_filenames = false
+require_serial = true
+always_run = true

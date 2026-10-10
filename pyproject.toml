@@ -33,6 +33,7 @@ dependencies = []
 dev = [
     "poethepoet>=0.48.0",
     "ruff>=0.17.0",
+    "ty>=0.0.85",
 ]
 
 [project.urls]
@@ -60,6 +61,10 @@ cmd = "ruff check --fix ."
 help = "Format the code with ruff"
 cmd = "ruff format ."
 
+[tool.poe.tasks.typecheck]
+help = "Type check with ty"
+cmd = "ty check"
+
 [tool.poe.tasks.hooks]
 help = "Run every prek hook on all files"
 cmd = "prek run -a"
@@ -67,7 +72,7 @@ executor = { with = ["prek"] }
 
 [tool.poe.tasks.check]
 help = "Run all the checks to do before a commit"
-sequence = ["lint", "format", "hooks"]
+sequence = ["lint", "format", "typecheck", "hooks"]
 
 [tool.ruff]
 line-length = 100
@@ -108,3 +113,7 @@ recursive = true
 wrap-summaries = 100
 wrap-descriptions = 100
 pre-summary-newline = true
+
+[tool.ty.terminal]
+# A warning is a finding like any other: it fails the hook and CI instead of scrolling past.
+error-on-warning = true
