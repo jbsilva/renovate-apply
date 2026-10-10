@@ -1,4 +1,4 @@
-"""Running Renovate: which command, and what a failed run says."""
+"""Running Renovate: which command, which token, and what a failed run says."""
 
 import json
 import shutil
@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from renovate_apply.errors import ScanError
-from renovate_apply.scan import REPORT_ENV_PATH, renovate_command, scan
+from renovate_apply.scan import REPORT_ENV_PATH, github_token, renovate_command, scan
 
 
 def fake_run(
@@ -64,11 +64,31 @@ def test_renovate_command_says_what_to_install(monkeypatch: pytest.MonkeyPatch) 
         renovate_command(None)
 
 
+def test_github_token_is_empty_without_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No gh means no token, and a run that is rate limited rather than one that fails."""
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+    assert github_token() == ""
+
+
+def test_github_token_reads_gh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The token comes from gh, never from argv or the shell history."""
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/gh")
+    monkeypatch.setattr(subprocess, "run", fake_run(stdout="gho_secret\n"))
+    assert github_token() == "gho_secret"
+
+
+def test_github_token_is_empty_when_gh_is_logged_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failing gh is not a reason to stop; it is a reason to expect rate limits."""
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/gh")
+    monkeypatch.setattr(subprocess, "run", fake_run(returncode=1))
+    assert github_token() == ""
+
+
 def test_scan_returns_the_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The report is read back from the path Renovate was told to write it to."""
     monkeypatch.setattr(shutil, "which", lambda _name: f"/usr/bin/{_name}")
     monkeypatch.setattr(subprocess, "run", fake_run(report={"repositories": {}}))
-    assert scan(tmp_path) == {"repositories": {}}
+    assert scan(tmp_path, token="") == {"repositories": {}}
 
 
 def test_scan_reports_a_failed_run_with_its_last_words(
@@ -83,7 +103,7 @@ def test_scan_reports_a_failed_run_with_its_last_words(
         fake_run(returncode=60, stderr="Invalid log level"),
     )
     with pytest.raises(ScanError, match="Invalid log level"):
-        scan(tmp_path)
+        scan(tmp_path, token="")
 
 
 def test_scan_reports_a_run_that_wrote_nothing(
@@ -94,7 +114,7 @@ def test_scan_reports_a_run_that_wrote_nothing(
     monkeypatch.setattr(shutil, "which", lambda _name: f"/usr/bin/{_name}")
     monkeypatch.setattr(subprocess, "run", fake_run(stdout="all good"))
     with pytest.raises(ScanError, match="wrote no report"):
-        scan(tmp_path)
+        scan(tmp_path, token="")
 
 
 def test_scan_reports_a_report_that_is_not_json(
@@ -105,7 +125,7 @@ def test_scan_reports_a_report_that_is_not_json(
     monkeypatch.setattr(shutil, "which", lambda _name: f"/usr/bin/{_name}")
     monkeypatch.setattr(subprocess, "run", fake_run(report="{not json"))
     with pytest.raises(ScanError, match="cannot read the report"):
-        scan(tmp_path)
+        scan(tmp_path, token="")
 
 
 def test_scan_reports_a_report_that_is_not_an_object(
@@ -116,4 +136,4 @@ def test_scan_reports_a_report_that_is_not_an_object(
     monkeypatch.setattr(shutil, "which", lambda _name: f"/usr/bin/{_name}")
     monkeypatch.setattr(subprocess, "run", fake_run(report=[1, 2]))
     with pytest.raises(ScanError, match="not an object"):
-        scan(tmp_path)
+        scan(tmp_path, token="")

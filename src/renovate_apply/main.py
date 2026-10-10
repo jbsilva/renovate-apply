@@ -55,6 +55,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     skip: list[str] | None = None,
     prefix: str = DEFAULT_PREFIX,
     renovate_version: str | None = None,
+    token: str | None = None,
 ) -> None:
     """
     Apply the updates Renovate finds, one commit per group.
@@ -80,6 +81,9 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     renovate_version
         The npm version of Renovate to run. Without this, a ``renovate`` already on PATH is used,
         and otherwise npx fetches the latest.
+    token
+        A GitHub token. Without this, ``gh auth token`` is asked, and a run without any token is
+        rate limited on everything it looks up on GitHub.
     """
     root = directory.resolve()
     committing = commit_each and not dry_run
@@ -90,6 +94,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
             committing=committing,
             skip=skip or [],
             renovate_version=renovate_version,
+            token=token,
         )
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
@@ -101,13 +106,14 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         raise SystemExit(1)
 
 
-def _plan(
+def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     root: Path,
     *,
     major: bool,
     committing: bool,
     skip: list[str],
     renovate_version: str | None,
+    token: str | None,
 ) -> tuple[list[Group], list[Held]]:
     """Check the working copy, run the scan, and return what to do with what came back."""
     require_repository(root)
@@ -115,7 +121,7 @@ def _plan(
         require_clean(root)
 
     err.print(f"renovate-apply: scanning {root} ...", style="dim")
-    report = scan(root, version=renovate_version)
+    report = scan(root, version=renovate_version, token=token)
     for problem in problems(report):
         err.print(f"renovate-apply: renovate reported: {problem}", style="yellow")
 
