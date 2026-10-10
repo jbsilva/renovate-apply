@@ -51,6 +51,30 @@ There is no text to replace, so there is nothing for this tool to do. Moving the
 that package manager. The one exception is `uv.lock`, which is refreshed after an edit to its own
 `pyproject.toml`. See [Commits and lock files](../how-it-works/commits.md#lock-files).
 
+## Updates that do not lock
+
+Sometimes the new floor in `pyproject.toml` conflicts with another dependency. For example, a
+package you depend on caps `opentelemetry-sdk` below the version Renovate proposes. Then `uv lock`
+finds no solution, and Renovate's own pull request would fail its lock file update.
+
+The group is undone: every file it edited is put back as it was, `uv.lock` included. uv's
+explanation is printed, and the updates are listed with this reason:
+
+```console
+renovate-apply: deps: update opentelemetry-python-monorepo does not lock, undone. uv lock failed in .:
+error: No solution found when resolving dependencies
+...
+
+Held back:
+  opentelemetry-sdk -> >=1.45.0 (uv lock finds no solution for it, see above)
+```
+
+The run goes on with the other groups and does not fail because of this one. Run it again when the
+dependency that blocks the update releases a version that allows it.
+
+A dry run does not run `uv lock`, so it lists such a group as one it would apply. Any other failure
+of `uv lock`, for example a network error, fails the group instead. The group is still undone.
+
 ## One line that two managers found
 
 A custom regex manager in your Renovate configuration can match a line that a built-in manager also

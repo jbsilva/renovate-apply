@@ -58,6 +58,7 @@ the new version or digest in it. That pair is Renovate's own auto-replace, hande
   package rules and versioning schemes all apply without being restated here
 - Holds every major back until you ask for it
 - Never skips your git hooks, and never commits anything it did not write
+- Never leaves a `pyproject.toml` that does not lock: such a group is undone and held back
 - `--dry-run` to read first, `--no-commit` to review everything at once
 
 ## Requirements
@@ -151,6 +152,8 @@ reason:
 - **Lock file updates**, where the range in the manifest already allows the new version, so only the
   lock file beside it moves. There is no edit to make in the package file, and moving the lock file
   takes that package manager. Only `uv.lock` is refreshed here, after an edit to its manifest.
+- **Updates that do not lock**, where `uv lock` finds no solution for the new floor in
+  `pyproject.toml`. The group is undone, `uv.lock` included, and uv's explanation is printed.
 - **A line two managers found**, when a regex manager in your Renovate configuration matches a line
   a built-in manager also reads. Renovate reports the line twice. The first update makes the edit,
   and the second is listed with it.

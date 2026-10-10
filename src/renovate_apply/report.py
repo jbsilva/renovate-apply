@@ -21,6 +21,8 @@ HELD_MAJOR = "major, use --major to include it"
 HELD_RENAME = "a rename, which this tool does not write"
 HELD_SKIPPED = "skipped by configuration"
 HELD_LOCKFILE = "a lock file update, the manifest does not change"
+# Not decided from the report: main sets it when uv lock finds no solution for the edit.
+HELD_NO_SOLUTION = "uv lock finds no solution for it, see above"
 
 
 def held_repeat(first: Update) -> str:

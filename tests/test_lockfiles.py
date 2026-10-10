@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from renovate_apply.errors import LockError
+from renovate_apply.errors import LockError, NoSolutionError
 from renovate_apply.lockfiles import refresh
 
 
@@ -99,5 +99,50 @@ def test_refresh_reports_what_uv_said_when_it_fails(
         lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, "", "No solution found"),
     )
 
-    with pytest.raises(LockError, match="No solution found"):
+    with pytest.raises(NoSolutionError, match="No solution found"):
         refresh(tmp_path, ["pyproject.toml"])
+
+
+def test_refresh_tells_a_broken_uv_from_an_unsolvable_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A network failure says nothing about the update, so it is a plain failure, not a hold."""
+    (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/uv")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 2, "", "Failed to fetch"),
+    )
+
+    with pytest.raises(LockError, match="Failed to fetch") as raised:
+        refresh(tmp_path, ["pyproject.toml"])
+    assert not isinstance(raised.value, NoSolutionError)
+
+
+def test_refresh_puts_back_a_lock_file_it_already_refreshed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A group over two projects that fails on the second leaves the first one's lock as it was."""
+    for name in ("first", "second"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (tmp_path / name / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cwd = kwargs.get("cwd")
+        assert isinstance(cwd, Path)
+        if cwd.name == "second":
+            return subprocess.CompletedProcess(argv, 1, "", "No solution found")
+        (cwd / "uv.lock").write_text("version = 1  # relocked\n", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/uv")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(NoSolutionError):
+        refresh(tmp_path, ["first/pyproject.toml", "second/pyproject.toml"])
+    assert (tmp_path / "first" / "uv.lock").read_text(encoding="utf-8") == "version = 1\n"

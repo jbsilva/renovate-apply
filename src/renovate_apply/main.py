@@ -14,6 +14,7 @@ Nothing is pushed and nothing is deployed. Read the diff, then push.
 """
 
 import sys
+from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
@@ -22,13 +23,20 @@ from rich.console import Console
 
 from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
-from renovate_apply.errors import RenovateApplyError
-from renovate_apply.files import apply_group, split_repeats
+from renovate_apply.errors import LockError, NoSolutionError, RenovateApplyError
+from renovate_apply.files import apply_group, restore, snapshot, split_repeats
 from renovate_apply.git import commit, require_clean, require_repository
 from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
-from renovate_apply.report import group, held_repeat, problems, read_updates, split
+from renovate_apply.report import (
+    HELD_NO_SOLUTION,
+    group,
+    held_repeat,
+    problems,
+    read_updates,
+    split,
+)
 from renovate_apply.scan import scan
 lazy from renovate_apply.models import Group
 
@@ -47,6 +55,14 @@ app = App(
 # one line and can be copied out of the scrollback whole.
 out = Console(markup=False, highlight=False, soft_wrap=True)
 err = Console(markup=False, highlight=False, soft_wrap=True, stderr=True)
+
+
+class Mode(Enum):
+    """How far each group goes once its edits are computed; each value is the run's last line."""
+
+    DRY_RUN = "Nothing was written."
+    WRITE = "Written, not committed. `git diff` to read it."
+    COMMIT = "Committed. Nothing is pushed."
 
 
 @app.default
@@ -80,7 +96,8 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         Include major updates, which are held back by default.
     lock
         Run ``uv lock`` after editing a ``pyproject.toml`` that has a ``uv.lock`` beside it, and
-        commit the two together. ``--no-lock`` leaves the lock file to you.
+        commit the two together. A group uv finds no solution for is undone and held back.
+        ``--no-lock`` leaves the lock file to you.
     skip
         Hold a dependency back by name, as a glob, repeatable. This is how a repository keeps a
         dependency that its Renovate configuration sends to the dependency dashboard, which the
@@ -97,12 +114,12 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         with no token at all is rate limited on everything it looks up on GitHub.
     """
     root = directory.resolve()
-    committing = commit_each and not dry_run
+    mode = _mode(dry_run=dry_run, commit_each=commit_each)
     try:
         groups, held = _plan(
             root,
             major=major,
-            committing=committing,
+            committing=mode is Mode.COMMIT,
             skip=skip or [],
             renovate_version=renovate_version,
             token=token,
@@ -110,18 +127,24 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
-    failed = _perform(
-        root,
-        groups,
-        prefix=prefix,
-        dry_run=dry_run,
-        committing=committing,
-        lock=lock,
-    )
+    failed, unsolved = _perform(root, groups, prefix=prefix, mode=mode, lock=lock)
+    held += [Held(update, HELD_NO_SOLUTION) for one in unsolved for update in one.updates]
     _report_held(held)
-    _report_outcome(groups, failed, dry_run=dry_run, committing=committing)
+    _report_outcome(
+        total=len(groups),
+        failed=len(failed),
+        applied=len(groups) - len(failed) - len(unsolved),
+        mode=mode,
+    )
     if failed:
         raise SystemExit(1)
+
+
+def _mode(*, dry_run: bool, commit_each: bool) -> Mode:
+    """Turn the flags into one mode; the flag that does less wins."""
+    if dry_run:
+        return Mode.DRY_RUN
+    return Mode.COMMIT if commit_each else Mode.WRITE
 
 
 def _plan(  # noqa: PLR0913 - one argument per switch the command was given
@@ -149,65 +172,73 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     return group(to_apply), held
 
 
-def _perform(  # noqa: PLR0913 - one argument per switch the command was given
+def _perform(
     root: Path,
     groups: list[Group],
     *,
     prefix: str,
-    dry_run: bool,
-    committing: bool,
+    mode: Mode,
     lock: bool,
-) -> list[Group]:
+) -> tuple[list[Group], list[Group]]:
     """
-    Apply each group in turn, committing as it goes unless told not to.
+    Apply each group in turn, as far as *mode* says.
 
     A group that cannot be applied is reported and passed over, and the groups after it are still
     applied. Each group is its own commit and its own set of files, so one of them failing says
-    nothing about the rest, and losing the whole run to one stale dependency helps nobody. The
-    groups that failed come back, for the caller to exit on.
+    nothing about the rest, and losing the whole run to one stale dependency helps nobody.
+
+    Returns the groups that failed, for the caller to exit on, and the groups uv could not lock,
+    which are held back rather than failed: the edit is sound, the dependency tree is not ready.
     """
     failed: list[Group] = []
+    unsolved: list[Group] = []
     for one in groups:
         try:
-            _perform_group(
-                root,
-                one,
-                prefix=prefix,
-                dry_run=dry_run,
-                committing=committing,
-                lock=lock,
-            )
+            _perform_group(root, one, prefix=prefix, mode=mode, lock=lock)
+        except NoSolutionError as error:
+            subject = message(one, prefix)[0]
+            err.print(f"renovate-apply: {subject} does not lock, undone. {error}", style="yellow")
+            unsolved.append(one)
         except RenovateApplyError as error:
             err.print(f"renovate-apply: {error}", style="red")
             failed.append(one)
-    return failed
+    return failed, unsolved
 
 
-def _perform_group(  # noqa: PLR0913 - one argument per switch the command was given
-    root: Path,
-    one: Group,
-    *,
-    prefix: str,
-    dry_run: bool,
-    committing: bool,
-    lock: bool,
-) -> None:
-    """Apply one group, and commit it when the run commits."""
+def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: bool) -> None:
+    """Apply one group, then lock and commit it as *mode* says."""
     paragraphs = message(one, prefix)
-    package_files = apply_group(root, one, write=not dry_run)
-    out.print("would apply  " if dry_run else "applied  ", style="dim", end="")
+    originals = snapshot(root, one.package_files)
+    package_files = apply_group(root, one, write=mode is not Mode.DRY_RUN)
+    # The lock file is refreshed before the commit, so the manifest and the lock file that matches
+    # it are one commit, which is how Renovate's own pull request carries them.
+    locks = _relock(root, package_files, originals) if lock and mode is not Mode.DRY_RUN else ()
+    out.print("would apply  " if mode is Mode.DRY_RUN else "applied  ", style="dim", end="")
     out.print(paragraphs[0], style="bold")
     for name, moved in moves(one):
         out.print(f"    {name}  {moved}")
-    if dry_run:
-        return
-    # The lock file is refreshed before the commit, so the manifest and the lock file that matches
-    # it are one commit, which is how Renovate's own pull request carries them.
-    locks = refresh(root, package_files) if lock else ()
     for refreshed in locks:
         out.print(f"    {refreshed}  refreshed", style="dim")
-    if committing:
+    if mode is Mode.COMMIT:
         commit(root, [*package_files, *locks], paragraphs)
+
+
+def _relock(
+    root: Path,
+    package_files: tuple[str, ...],
+    originals: dict[str, str],
+) -> tuple[str, ...]:
+    """
+    Refresh the lock files beside the edited manifests, or put the manifests back.
+
+    A manifest left edited after its lock failed is one the next ``git commit`` refuses, through the
+    repository's own uv-lock hook, long after this run has ended.
+    """
+    try:
+        return refresh(root, package_files)
+    except LockError:
+        restore(root, originals)
+        raise
 
 
 def _report_held(held: list[Held]) -> None:
@@ -222,27 +253,15 @@ def _report_held(held: list[Held]) -> None:
         out.print(line)
 
 
-def _report_outcome(
-    groups: list[Group],
-    failed: list[Group],
-    *,
-    dry_run: bool,
-    committing: bool,
-) -> None:
+def _report_outcome(*, total: int, failed: int, applied: int, mode: Mode) -> None:
     """Say what state the working copy is in now."""
     if failed:
-        out.print(f"\n{len(failed)} of {len(groups)} groups could not be applied.", style="red")
-    if not groups:
-        out.print("Nothing to apply.")
+        out.print(f"\n{failed} of {total} groups could not be applied.", style="red")
+    if not applied:
+        if not failed:
+            out.print("Nothing to apply.")
         return
-    if len(failed) == len(groups):
-        return
-    if dry_run:
-        out.print("\nNothing was written.", style="dim")
-    elif committing:
-        out.print("\nCommitted. Nothing is pushed.", style="dim")
-    else:
-        out.print("\nWritten, not committed. `git diff` to read it.", style="dim")
+    out.print(f"\n{mode.value}", style="dim")
 
 
 def main(argv: list[str] | None = None) -> None:

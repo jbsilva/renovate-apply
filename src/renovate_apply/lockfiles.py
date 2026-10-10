@@ -16,11 +16,13 @@ import subprocess  # nosec B404  # only used to run uv, with an argv this module
 from pathlib import Path, PurePosixPath
 lazy from collections.abc import Sequence
 
-from renovate_apply.errors import LockError
+from renovate_apply.errors import LockError, NoSolutionError
 
 
 MANIFEST = "pyproject.toml"
 LOCK_FILE = "uv.lock"
+# What uv prints when the manifest cannot be satisfied, as opposed to uv failing to run at all.
+NO_SOLUTION = "No solution found"
 
 
 def refresh(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
@@ -28,10 +30,17 @@ def refresh(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
     Run ``uv lock`` for every edited manifest that has a lock file beside it.
 
     Returns the lock files that were refreshed, as repository-relative paths, so the caller can
-    commit them together with the manifest.
+    commit them together with the manifest. When one of them fails, every lock file is put back as
+    it was, so a group that touches two projects does not leave the first one relocked.
     """
     directories = _directories_to_relock(root, package_files)
-    return tuple(_relock(root, directory) for directory in directories)
+    before = {directory: (root / directory / LOCK_FILE).read_bytes() for directory in directories}
+    try:
+        return tuple(_relock(root, directory) for directory in directories)
+    except LockError:
+        for directory, content in before.items():
+            (root / directory / LOCK_FILE).write_bytes(content)
+        raise
 
 
 def _directories_to_relock(root: Path, package_files: Sequence[str]) -> list[str]:
@@ -65,7 +74,7 @@ def _relock(root: Path, directory: str) -> str:
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         msg = f"uv lock failed in {directory or '.'}:\n{detail}"
-        raise LockError(msg)
+        raise (NoSolutionError if NO_SOLUTION in detail else LockError)(msg)
     return _joined(directory, LOCK_FILE)
 
 

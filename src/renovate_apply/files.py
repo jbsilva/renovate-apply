@@ -6,7 +6,7 @@ CRLF files would otherwise come back rewritten from top to bottom, and the one-l
 promises would be the whole file.
 """
 
-lazy from collections.abc import Sequence
+lazy from collections.abc import Mapping, Sequence
 lazy from pathlib import Path
 
 from renovate_apply.errors import ReplaceError
@@ -68,6 +68,17 @@ def _same_edit(root: Path, texts: dict[str, str], first: Update, second: Update)
     if first.package_file not in texts:
         texts[first.package_file] = _read(root / first.package_file)
     return same_edit(texts[first.package_file], first, second)
+
+
+def snapshot(root: Path, package_files: Sequence[str]) -> dict[str, str]:
+    """Return what each package file holds now, for ``restore`` to put back."""
+    return {package_file: _read(root / package_file) for package_file in package_files}
+
+
+def restore(root: Path, originals: Mapping[str, str]) -> None:
+    """Write back what ``snapshot`` read, undoing a group that cannot be finished."""
+    for package_file, text in originals.items():
+        _write(root / package_file, text)
 
 
 def _read(path: Path) -> str:

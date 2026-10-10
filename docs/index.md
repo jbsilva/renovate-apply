@@ -49,6 +49,7 @@ the new version in it. That pair is Renovate's own auto-replace, handed over as 
     package rules and versioning schemes all apply without being restated here.
 - Holds every major back until you ask for it.
 - Never skips your git hooks, and never commits anything it did not write.
+- Never leaves a `pyproject.toml` that does not lock: such a group is undone and held back.
 - `--dry-run` to read first, `--no-commit` to review everything at once.
 
 ## Quick start

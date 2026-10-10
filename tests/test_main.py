@@ -15,7 +15,9 @@ from helpers import (
 )
 
 from renovate_apply import main as main_module
+from renovate_apply.errors import LockError, NoSolutionError
 from renovate_apply.models import Update
+from renovate_apply.report import HELD_NO_SOLUTION
 
 
 def given_report(monkeypatch: pytest.MonkeyPatch, *updates: Update) -> None:
@@ -334,37 +336,119 @@ def test_one_line_two_managers_found_is_one_commit(
     assert f"wrangler -> 4.148.0 ({held})" in capsys.readouterr().out
 
 
-def test_refreshes_the_lock_file_beside_an_edited_manifest(
-    repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The manifest and the lock file that matches it belong in the same commit."""
+def with_manifest(repo: Path) -> None:
+    """Commit a pyproject.toml with a uv.lock beside it, for the lock file tests."""
     (repo / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")
     (repo / "uv.lock").write_text("version = 1\n", encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-m", "add a manifest")
 
-    def fake_refresh(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
-        assert package_files == ("pyproject.toml",)
-        (root / "uv.lock").write_text("version = 1  # relocked\n", encoding="utf-8")
-        return ("uv.lock",)
 
-    monkeypatch.setattr(main_module, "refresh", fake_refresh)
-    given_report(
-        monkeypatch,
-        docker_update(
-            manager="pep621",
-            package_file="pyproject.toml",
-            dep_name="cyclopts",
-            replace_string='name = "x"',
-            replace_template=None,
-            current_value="x",
-            new_value="y",
-            current_digest=None,
-            new_digest=None,
-        ),
-    )
+def manifest_update(**overrides: object) -> Update:
+    """Return an update to the manifest that with_manifest commits."""
+    fields: dict[str, object] = {
+        "manager": "pep621",
+        "package_file": "pyproject.toml",
+        "dep_name": "cyclopts",
+        "branch_name": "renovate/python",
+        "replace_string": 'name = "x"',
+        "replace_template": None,
+        "current_value": "x",
+        "new_value": "y",
+        "current_digest": None,
+        "new_digest": None,
+    }
+    fields.update(overrides)
+    return docker_update(**fields)
+
+
+def relocks(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
+    """Stand in for refresh: rewrite uv.lock the way a successful uv lock would."""
+    if "pyproject.toml" not in package_files:
+        return ()
+    (root / "uv.lock").write_text("version = 1  # relocked\n", encoding="utf-8")
+    return ("uv.lock",)
+
+
+def fails_to_lock(error: LockError) -> object:
+    """Stand in for refresh: fail with *error* on the manifest, pass over any other file."""
+
+    def refresh(_root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
+        if "pyproject.toml" in package_files:
+            raise error
+        return ()
+
+    return refresh
+
+
+def test_refreshes_the_lock_file_beside_an_edited_manifest(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The manifest and the lock file that matches it belong in the same commit."""
+    with_manifest(repo)
+    monkeypatch.setattr(main_module, "refresh", relocks)
+    given_report(monkeypatch, manifest_update())
     assert run_cli(str(repo)) == 0
 
     files = git(repo, "show", "--name-only", "--pretty=", "HEAD").stdout.split()
     assert files == ["pyproject.toml", "uv.lock"]
+
+
+def test_a_group_that_does_not_lock_is_undone_and_held_back(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """
+    A floor uv cannot satisfy is put back and listed, and the rest of the run goes on.
+
+    Left edited, the manifest would be refused by the repository's own uv-lock hook at the next
+    commit, long after this run reported it.
+    """
+    with_manifest(repo)
+    monkeypatch.setattr(
+        main_module,
+        "refresh",
+        fails_to_lock(NoSolutionError("uv lock failed in .:\nNo solution found")),
+    )
+    given_report(monkeypatch, manifest_update(), docker_update())
+    assert run_cli(str(repo)) == 0
+
+    captured = capsys.readouterr()
+    assert "does not lock, undone" in captured.err
+    assert "No solution found" in captured.err
+    assert f"cyclopts -> y ({HELD_NO_SOLUTION})" in captured.out
+    assert subjects(repo)[2:] == ["deps: update ghcr.io/atuinsh/atuin to 18.22.0"]
+    assert (repo / "pyproject.toml").read_text(encoding="utf-8") == '[project]\nname = "x"\n'
+    assert git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_a_group_held_back_alone_leaves_nothing_to_apply(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """When the one group does not lock, the run says nothing was applied, and does not fail."""
+    with_manifest(repo)
+    monkeypatch.setattr(main_module, "refresh", fails_to_lock(NoSolutionError("no solution")))
+    given_report(monkeypatch, manifest_update())
+    assert run_cli(str(repo)) == 0
+
+    assert "Nothing to apply." in capsys.readouterr().out
+
+
+def test_a_lock_that_fails_for_another_reason_fails_the_group(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A uv that could not run says nothing about the update, so the run fails, still undone."""
+    with_manifest(repo)
+    monkeypatch.setattr(main_module, "refresh", fails_to_lock(LockError("Failed to fetch")))
+    given_report(monkeypatch, manifest_update())
+    assert run_cli(str(repo)) == 1
+
+    assert "Failed to fetch" in capsys.readouterr().err
+    assert (repo / "pyproject.toml").read_text(encoding="utf-8") == '[project]\nname = "x"\n'
+    assert git(repo, "status", "--porcelain").stdout == ""

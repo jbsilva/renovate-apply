@@ -33,6 +33,10 @@ class LockError(RenovateApplyError):
     """The lock file beside an edited manifest could not be refreshed."""
 
 
+class NoSolutionError(LockError):
+    """uv found no set of versions that satisfies the edited manifest."""
+
+
 class GitError(RenovateApplyError):
     """A git command failed, most often a commit a hook refused."""
 

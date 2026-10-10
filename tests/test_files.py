@@ -6,7 +6,7 @@ import pytest
 from helpers import WORKFLOW, docker_update, wrangler_updates
 
 from renovate_apply.errors import ReplaceError
-from renovate_apply.files import apply_group, split_repeats
+from renovate_apply.files import apply_group, restore, snapshot, split_repeats
 from renovate_apply.models import Group
 
 
@@ -99,3 +99,14 @@ def test_apply_group_writes_nothing_when_a_later_file_cannot_be_edited(tmp_path:
     with pytest.raises(ReplaceError, match="is not in"):
         apply_group(tmp_path, group)
     assert first.read_text(encoding="utf-8") == original
+
+
+def test_restore_puts_back_what_snapshot_read(tmp_path: Path) -> None:
+    """An edit that has to be undone comes back byte for byte, Windows line endings included."""
+    path = tmp_path / "pyproject.toml"
+    path.write_bytes(b"[project]\r\ndependencies = []\r\n")
+    originals = snapshot(tmp_path, ["pyproject.toml"])
+    path.write_text("edited\n", encoding="utf-8")
+
+    restore(tmp_path, originals)
+    assert path.read_bytes() == b"[project]\r\ndependencies = []\r\n"

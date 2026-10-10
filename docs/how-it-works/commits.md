@@ -86,6 +86,11 @@ without reaching for anything else. Any other lock file is left alone; run its u
 
 A manifest in a subdirectory is relocked in that subdirectory, not at the repository root.
 
+If `uv lock` fails, the group is undone: its manifests and lock files go back to what they held
+before the group. A manifest left edited would otherwise fail the repository's own uv-lock hook at
+the next commit. When uv finds no solution, the group is
+[held back](../usage/held-back.md#updates-that-do-not-lock). Any other failure fails the group.
+
 !!! warning
 
     If `uv` is not on your `PATH` when a lock file needs refreshing, the group fails rather than
