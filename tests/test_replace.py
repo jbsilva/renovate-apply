@@ -205,8 +205,9 @@ def test_apply_to_text_anchors_a_bare_version_on_the_dependency_name() -> None:
 
 def test_apply_to_text_says_so_when_the_text_has_already_moved() -> None:
     """A file that no longer holds what the report described is never rewritten on a guess."""
+    update = docker_update()
     with pytest.raises(ReplaceError, match="is not in"):
-        apply_to_text("nothing here\n", docker_update())
+        apply_to_text("nothing here\n", update)
 
 
 def test_apply_all_edits_a_reference_that_is_really_in_the_file_twice() -> None:
@@ -250,8 +251,9 @@ def test_apply_all_skips_a_repeat_of_a_line_that_is_in_the_file_once() -> None:
 
 def test_apply_all_still_refuses_a_first_edit_it_cannot_place() -> None:
     """Skipping a repeat never becomes skipping the edit itself: the first miss is still a fault."""
+    updates = [docker_update(), docker_update()]
     with pytest.raises(ReplaceError, match="is not in"):
-        apply_all("nothing here\n", [docker_update(), docker_update()])
+        apply_all("nothing here\n", updates)
 
 
 def test_same_edit_is_one_line_two_managers_found() -> None:

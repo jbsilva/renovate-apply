@@ -60,8 +60,9 @@ def test_apply_group_keeps_windows_line_endings(tmp_path: Path) -> None:
 
 def test_apply_group_reports_a_file_it_cannot_read(tmp_path: Path) -> None:
     """A package file the report names and the disk does not have is a fault, not a skip."""
+    group = Group("renovate/stack-images", (docker_update(),))
     with pytest.raises(ReplaceError, match="cannot read"):
-        apply_group(tmp_path, Group("renovate/stack-images", (docker_update(),)))
+        apply_group(tmp_path, group)
 
 
 def test_split_repeats_keeps_the_first_of_one_edit_found_twice(tmp_path: Path) -> None:
