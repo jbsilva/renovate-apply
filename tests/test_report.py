@@ -7,6 +7,7 @@ from renovate_apply.errors import ReportError
 from renovate_apply.report import (
     HELD_MAJOR,
     HELD_PENDING,
+    HELD_RENAME,
     group,
     read_updates,
     split,
@@ -61,6 +62,12 @@ def test_split_applies_a_security_fix_even_while_it_is_pending() -> None:
     to_apply, held = split([update], with_major=False)
     assert to_apply == [update]
     assert held == []
+
+
+def test_split_holds_a_rename() -> None:
+    """Renaming a dependency is a different edit, and this tool does not write it."""
+    _, held = split([docker_update(new_name="ghcr.io/other/atuin")], with_major=False)
+    assert held[0].reason == HELD_RENAME
 
 
 def test_group_gathers_by_branch_in_the_order_renovate_reported() -> None:

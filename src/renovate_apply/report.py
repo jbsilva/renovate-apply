@@ -17,6 +17,7 @@ LOCAL_REPOSITORY = "local"
 
 HELD_PENDING = "waiting out minimumReleaseAge"
 HELD_MAJOR = "major, use --major to include it"
+HELD_RENAME = "a rename, which this tool does not write"
 
 
 def read_updates(report: Mapping[str, object]) -> list[Update]:
@@ -57,6 +58,8 @@ def group(updates: Sequence[Update]) -> list[Group]:
 
 def _hold_reason(update: Update, *, with_major: bool) -> str | None:
     """Return why this update is not applied, or None when it is."""
+    if update.new_name is not None and update.new_name != update.dep_name:
+        return HELD_RENAME
     # A security fix bypasses Renovate's own holds, so it bypasses this one too.
     if update.pending and not update.is_security:
         return HELD_PENDING
