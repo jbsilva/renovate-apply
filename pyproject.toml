@@ -7,6 +7,15 @@ requires-python = ">=3.15"
 authors = [{ name = "Julio Batista Silva", email = "python@juliobs.com" }]
 license = "MIT"
 license-files = ["LICENSE"]
+keywords = [
+    "renovate",
+    "dependencies",
+    "updates",
+    "cli",
+    "docker",
+    "pre-commit",
+    "github-actions",
+]
 dependencies = []
 
 [project.scripts]
