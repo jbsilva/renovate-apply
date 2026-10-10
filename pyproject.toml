@@ -31,6 +31,7 @@ dependencies = []
 
 [dependency-groups]
 dev = [
+    "poethepoet>=0.48.0",
     "ruff>=0.17.0",
 ]
 
@@ -47,6 +48,26 @@ ruff = "6 hours"
 [build-system]
 requires = ["uv_build>=0.12.23,<1.0.0"]
 build-backend = "uv_build"
+
+[tool.poe]
+executor.type = "uv"
+
+[tool.poe.tasks.lint]
+help = "Lint with ruff and apply its fixes"
+cmd = "ruff check --fix ."
+
+[tool.poe.tasks.format]
+help = "Format the code with ruff"
+cmd = "ruff format ."
+
+[tool.poe.tasks.hooks]
+help = "Run every prek hook on all files"
+cmd = "prek run -a"
+executor = { with = ["prek"] }
+
+[tool.poe.tasks.check]
+help = "Run all the checks to do before a commit"
+sequence = ["lint", "format", "hooks"]
 
 [tool.ruff]
 line-length = 100
