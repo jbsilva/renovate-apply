@@ -7,6 +7,7 @@ after ``report`` has to know the report's shape.
 """
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,3 +50,37 @@ class Update:
 
     new_name: str | None = None
     """Set only when Renovate wants to replace the dependency with a different one."""
+
+    @property
+    def new(self) -> str:
+        """Return what the file will say, for display."""
+        return self.new_value or self.new_digest or "?"
+
+    @property
+    def digest_only(self) -> bool:
+        """Say whether the tag stays and only the digest behind it moved."""
+        return self.update_type == "digest"
+
+    @property
+    def directory(self) -> str:
+        """Return the directory of the package file, empty for a file at the repository root."""
+        parent = PurePosixPath(self.package_file).parent
+        return "" if parent == PurePosixPath(".") else str(parent)
+
+
+@dataclass(frozen=True, slots=True)
+class Group:
+    """The updates that share a Renovate branch, which is to say the updates of one commit."""
+
+    branch: str
+    updates: tuple[Update, ...]
+
+    @property
+    def managers(self) -> frozenset[str]:
+        """Return the set of managers that contributed to this group."""
+        return frozenset(update.manager for update in self.updates)
+
+    @property
+    def directories(self) -> frozenset[str]:
+        """Return the set of directories this group touches."""
+        return frozenset(update.directory for update in self.updates)
