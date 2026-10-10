@@ -19,5 +19,9 @@ lcov.info
 # Generated CI artifacts (coverage.xml, ruff/bandit reports, scan logs)
 reports/
 
+# Zensical documentation build output and cache (see zensical.toml)
+site/
+.cache/
+
 # Machine-local Claude Code settings (hooks, permissions, enabled MCP servers)
 .claude/settings.local.json

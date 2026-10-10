@@ -51,12 +51,21 @@ hooks = [
   { id = "ruff-format" },
 ]
 
+# Two passes over the markdown: docs/ uses the mkdocs flavor, everything else plain GFM.
+# mdformat-frontmatter keeps both from mangling YAML front matter blocks.
 [[repos]]
 repo = "https://github.com/hukkin/mdformat"
 rev = "1.0.0"
 hooks = [
-  { id = "mdformat", additional_dependencies = [
+  # exclude docs/: the mkdocs flavor below handles it.
+  { id = "mdformat", exclude = "^docs/", additional_dependencies = [
     "mdformat-gfm",
+    "mdformat-frontmatter",
+  ] },
+  # Zensical sources: admonitions and content tabs need the mkdocs plugin. Plain GFM reads their
+  # four-space bodies as indented code blocks and fences them.
+  { id = "mdformat", name = "mdformat (docs)", files = "^docs/", additional_dependencies = [
+    "mdformat-mkdocs",
     "mdformat-frontmatter",
   ] },
 ]

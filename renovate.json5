@@ -100,9 +100,9 @@
       groupName: "python production (minor+patch)",
     },
     {
-      // PEP 735 groups all share the single depType "dependency-groups", so this covers dev and
-      // test together.
-      description: "Python dev/test deps [dependency-groups]: group minor+patch",
+      // PEP 735 groups all share the single depType "dependency-groups", so one rule covers every
+      // group there is, however many the project grows.
+      description: "Python [dependency-groups] deps: group minor+patch",
       matchManagers: ["pep621"],
       matchDepTypes: ["dependency-groups"],
       matchUpdateTypes: ["minor", "patch"],
