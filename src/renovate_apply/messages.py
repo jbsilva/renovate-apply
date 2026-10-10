@@ -66,8 +66,7 @@ def _summary(group: Group) -> str:
     directories = group.directories
     if group.managers <= DOCKER_MANAGERS and len(directories) == 1:
         directory = next(iter(directories))
-        if directory:
-            return f"update the {directory} images"
+        return f"update the {directory} images" if directory else "update the images"
     if group.managers == PRE_COMMIT_MANAGERS:
         return "update the hook revs"
     if group.managers == ACTION_MANAGERS:

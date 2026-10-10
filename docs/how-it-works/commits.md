@@ -31,6 +31,7 @@ The subject is picked by what the group holds:
 | One dependency                        | `update <name> to <version>`    |
 | One dependency, only the digest moved | `update the <name> digest`      |
 | Several images in one directory       | `update the <directory> images` |
+| Several images at the repository root | `update the images`             |
 | Only pre-commit hooks                 | `update the hook revs`          |
 | Only GitHub Actions                   | `update the action pins`        |
 | Anything else                         | `update <branch name>`          |

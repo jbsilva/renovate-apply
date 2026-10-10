@@ -28,6 +28,13 @@ def test_subject_names_the_directory_when_a_stack_moved() -> None:
     assert subject(group) == "deps: update the stack images"
 
 
+def test_subject_names_images_when_docker_files_are_at_root() -> None:
+    """Images at the repository root have no directory to name, so the images are named."""
+    first = docker_update(package_file="compose.yaml")
+    second = docker_update(package_file="compose.yaml", dep_name="postgres")
+    assert subject(group_of(first, second)) == "deps: update the images"
+
+
 def test_subject_names_the_hooks_and_the_actions_by_what_they_are() -> None:
     """Files at the repository root have no directory to name, so the manager names them."""
     hooks = group_of(hook_update(), hook_update(dep_name="astral-sh/ruff-pre-commit"))
