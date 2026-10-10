@@ -29,6 +29,9 @@ hooks = [{ id = "uv-lock" }]
 
 # Docformatter: format docstrings and make sure we use 100 columns.
 # See [tool.docformatter] in pyproject.toml. Must run before ruff.
+# errors.py is excluded: it holds nothing but a module docstring and one-line class docstrings, and
+# on that shape docformatter drops one of the two blank lines after the module docstring while ruff
+# format puts it back. The two would rewrite the file against each other on every run.
 [[repos]]
 repo = "https://github.com/PyCQA/docformatter"
 rev = "v1.7.8"
@@ -37,7 +40,7 @@ hooks = [
     "--in-place",
     "--config",
     "./pyproject.toml",
-  ] },
+  ], exclude = '^src/renovate_apply/errors\.py$' },
 ]
 
 [[repos]]
