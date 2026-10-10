@@ -1,7 +1,7 @@
 [project]
 name = "renovate-apply"
 version = "0.1.0"
-description = "Add your description here"
+description = "Apply the dependency updates Renovate finds, locally, without a pull request"
 readme = "README.md"
 requires-python = ">=3.15"
 authors = [{ name = "Julio Batista Silva", email = "python@juliobs.com" }]
