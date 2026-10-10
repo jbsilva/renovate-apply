@@ -1,0 +1,139 @@
+// Renovate configuration: automated dependency updates across pyproject.toml / uv.lock, GitHub
+// Actions (.github/workflows), and prek.toml hook revs.
+//
+// Setup: install the Renovate GitHub App (https://github.com/apps/renovate) and merge the one-time
+// "Configure Renovate" onboarding PR.
+//
+// Validate after editing: `npx --yes --package renovate -- renovate-config-validator --strict`
+// (also wired as a prek hook).
+//
+// This repository is also the tool that applies these updates locally: `rnv --dry-run` here reads
+// the same configuration, so a change to the grouping below shows up in the local run as well.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // config:best-practices pins GitHub Actions to a full commit SHA with the version in the trailing
+  // comment, which is the form zizmor requires. It also enables the Dependency Dashboard issue. The
+  // built-in pre-commit manager is deliberately NOT enabled: it only looks at
+  // .pre-commit-config.ya?ml, and this repository uses prek.toml. See customManagers below.
+  extends: ["config:best-practices"],
+
+  // best-practices does NOT refresh transitive pins on its own; without this, uv.lock entries that
+  // no direct constraint covers only ever move via security alerts.
+  lockFileMaintenance: { enabled: true },
+
+  timezone: "Europe/Berlin",
+
+  // Cron (the minute field must be "*"): a Monday 02:00-06:59 window. The window only *allows* PRs
+  // to open; the hosted App decides when it actually runs.
+  schedule: ["* 2-6 * * 1"],
+
+  // Bump the lower bound in pyproject.toml instead of only updating uv.lock. With the default
+  // "auto" strategy an open ">=" range still covers a new release, so Renovate would touch only
+  // uv.lock and leave the declared floor stale.
+  rangeStrategy: "bump",
+
+  // Hold a non-security release for 3 days before opening a PR. This also keeps Renovate compatible
+  // with "[tool.uv] exclude-newer" in pyproject.toml: uv refuses to lock an artifact younger than
+  // 1 day, so proposing anything newer would yield an unresolvable "uv lock" PR.
+  minimumReleaseAge: "3 days",
+
+  // Security fixes open immediately, bypassing the weekly window and the 3-day hold.
+  // osvVulnerabilityAlerts adds OSV.dev coverage for the Python dependencies.
+  osvVulnerabilityAlerts: true,
+  vulnerabilityAlerts: {
+    labels: ["dependencies", "security"],
+    minimumReleaseAge: "0 days",
+  },
+
+  labels: ["dependencies"],
+
+  // prek reads prek.toml, not .pre-commit-config.yaml. Renovate has no native prek manager yet
+  // (renovatebot/renovate#41683), and the built-in pre-commit manager is hardwired to
+  // .pre-commit-config.ya?ml, so without this regex manager the hook revs would silently go stale.
+  customManagers: [
+    {
+      customType: "regex",
+      description: "prek hook revs in prek.toml",
+      managerFilePatterns: ["/(^|/)prek\\.toml$/"],
+      // Captures the owner/repo slug and the rev that follows it. "[^\\[]*?" tolerates comments or
+      // blank lines between the two keys while refusing to cross into the next "[[repos]]" table,
+      // so a rev is never paired with the wrong repo. The local hooks have no rev and never match.
+      matchStrings: [
+        "repo\\s*=\\s*[\"']https://github\\.com/(?<packageName>[^\"'\\s]+?)(?:\\.git)?[\"'][^\\[]*?rev\\s*=\\s*[\"'](?<currentValue>[^\"']+)[\"']",
+      ],
+      datasourceTemplate: "github-tags",
+    },
+  ],
+
+  // PR titles read "build(deps): ...". This is also what `rnv --prefix "build(deps):"` writes, so
+  // a local run and a merged pull request read alike.
+  semanticCommits: "enabled",
+  semanticCommitType: "build",
+  semanticCommitScope: "deps",
+
+  packageRules: [
+    // requires-python is a minimum-supported-version decision, not a routine floor: raising it to
+    // every patch release narrows who can install the package for nothing. "replace" is what holds
+    // it back. dependencyDashboardApproval does not: it gates the pull request, not the lookup, so
+    // a --platform=local run still reports the bump.
+    {
+      description: "Do not auto-bump the requires-python floor",
+      matchManagers: ["pep621"],
+      matchDepTypes: ["requires-python"],
+      rangeStrategy: "replace",
+      dependencyDashboardApproval: true,
+    },
+
+    // --- Ecosystem grouping: batch minor+patch, let majors land alone for their own review. ---
+    {
+      description: "GitHub Actions: group minor+patch",
+      matchManagers: ["github-actions"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "github-actions (minor+patch)",
+    },
+    {
+      description: "Python runtime deps [project.dependencies]: group minor+patch",
+      matchManagers: ["pep621"],
+      matchDepTypes: ["project.dependencies"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "python production (minor+patch)",
+    },
+    {
+      // PEP 735 groups all share the single depType "dependency-groups", so this covers dev and
+      // test together.
+      description: "Python dev/test deps [dependency-groups]: group minor+patch",
+      matchManagers: ["pep621"],
+      matchDepTypes: ["dependency-groups"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "python development (minor+patch)",
+    },
+
+    // --- Batch every remaining prek hook bump into one PR. The tool-specific groups below come
+    //     AFTER this and override it for ruff/bandit (last matching rule wins). ---
+    {
+      description: "prek hooks without a cross-file twin",
+      matchManagers: ["custom.regex"],
+      groupName: "prek hooks",
+    },
+
+    // --- Cross-file version sync. Renovate names a prek hook by its repo slug
+    //     (astral-sh/ruff-pre-commit) and a PyPI dep by package name (ruff). They never collide, so
+    //     a shared groupName pulls each tool's occurrences into ONE PR. ---
+    {
+      description: "ruff: pyproject dep + ruff-pre-commit hook",
+      matchPackageNames: ["ruff", "astral-sh/ruff-pre-commit"],
+      groupName: "ruff",
+    },
+    {
+      description: "bandit: pyproject dep + PyCQA/bandit hook",
+      matchPackageNames: ["bandit", "PyCQA/bandit"],
+      groupName: "bandit",
+    },
+    {
+      description: "zizmor: pyproject dep + zizmor-pre-commit hook",
+      matchPackageNames: ["zizmor", "zizmorcore/zizmor-pre-commit"],
+      groupName: "zizmor",
+    },
+  ],
+}

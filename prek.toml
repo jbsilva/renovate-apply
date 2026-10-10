@@ -97,6 +97,12 @@ repo = "https://github.com/crate-ci/typos"
 rev = "v1.51.1"
 hooks = [{ id = "typos" }]
 
+# Renovate config validator. Catches a typo in renovate.json5 before it silently breaks updates.
+[[repos]]
+repo = "https://github.com/renovatebot/pre-commit-hooks"
+rev = "44.149.2"
+hooks = [{ id = "renovate-config-validator", args = ["--strict"] }]
+
 # Static analysis for the GitHub Actions workflows. Same tool as the zizmor.yml workflow, so a
 # finding shows up here first instead of on a red CI run.
 [[repos]]
