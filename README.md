@@ -62,8 +62,9 @@ the new version or digest in it. That pair is Renovate's own auto-replace, hande
 - Python 3.15+
 - `git`
 - Either `renovate` on `PATH` (`npm i -g renovate`) or Node.js, for `npx` to fetch it
-- Optional: [`gh`](https://cli.github.com), logged in. Without a token, everything Renovate looks up
-  on GitHub is rate limited, and updates can silently go missing.
+- Optional: [`gh`](https://cli.github.com), logged in, or `GITHUB_TOKEN` in the environment. Without
+  a token, everything Renovate looks up on GitHub is rate limited, and updates can silently go
+  missing. Prefer either to `--token`, which puts the token in argv and in your shell history.
 
 ## Installation
 

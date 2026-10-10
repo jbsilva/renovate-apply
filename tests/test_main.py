@@ -256,6 +256,24 @@ def test_a_failed_group_leaves_nothing_for_the_next_group_to_commit(
     assert git(repo, "status", "--porcelain").stdout == ""
 
 
+def test_a_token_can_come_from_the_environment(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GITHUB_TOKEN keeps the token out of argv, which every process on the machine can read."""
+    seen: dict[str, object] = {}
+
+    def fake_scan(_root: Path, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return report_for()
+
+    monkeypatch.setattr(main_module, "scan", fake_scan)
+    monkeypatch.setenv("GITHUB_TOKEN", "gho_from_env")
+    assert run_cli(str(repo)) == 0
+
+    assert seen["token"] == "gho_from_env"  # noqa: S105 - a made-up token, not a credential
+
+
 def test_says_when_there_is_nothing_to_do(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,

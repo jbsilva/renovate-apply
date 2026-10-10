@@ -48,3 +48,6 @@ This tool writes files and makes commits on the machine that runs it. In scope:
 - **Running it against a repository you do not trust.** Renovate executes that repository's
   configuration. This tool is no safer than running `renovate --platform=local` there yourself.
 - **Your git hooks.** They run on every commit, by design, with whatever they do.
+- **A token you put on the command line yourself.** `--token` is argv, which every process on the
+  machine can read, and it lands in your shell history. Set `GITHUB_TOKEN` in the environment, or
+  log in with `gh` and pass nothing, and neither happens.

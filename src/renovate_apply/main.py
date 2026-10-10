@@ -61,7 +61,8 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     skip: list[str] | None = None,
     prefix: str = DEFAULT_PREFIX,
     renovate_version: str | None = None,
-    token: str | None = None,
+    # An env var so there is a way in that is not argv, which every process on the machine can read.
+    token: Annotated[str | None, Parameter(env_var="GITHUB_TOKEN")] = None,
 ) -> None:
     """
     Apply the updates Renovate finds, one commit per group.
@@ -91,8 +92,9 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         The npm version of Renovate to run. Without this, a ``renovate`` already on PATH is used,
         and otherwise npx fetches the latest.
     token
-        A GitHub token. Without this, ``gh auth token`` is asked, and a run without any token is
-        rate limited on everything it looks up on GitHub.
+        A GitHub token. ``GITHUB_TOKEN`` in the environment says the same thing without putting the
+        token in argv or in the shell history. Without either, ``gh auth token`` is asked, and a run
+        with no token at all is rate limited on everything it looks up on GitHub.
     """
     root = directory.resolve()
     committing = commit_each and not dry_run
