@@ -72,3 +72,30 @@ def test_split_repeats_keeps_the_first_of_one_edit_found_twice(tmp_path: Path) -
     path.write_text(WORKFLOW, encoding="utf-8")
     other = docker_update()
     assert split_repeats(tmp_path, [action, other, regex]) == ([action, other], [(regex, action)])
+
+
+def test_apply_group_writes_nothing_when_a_later_file_cannot_be_edited(tmp_path: Path) -> None:
+    """
+    A group is all of its files or none of them.
+
+    Written as it went, the first file would stay edited after the group was reported as failed, and
+    the next group to touch it would stage and commit that edit under its own message.
+    """
+    first = tmp_path / "compose.yaml"
+    original = "a: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa\n"
+    first.write_text(original, encoding="utf-8")
+    (tmp_path / "other.yaml").write_text("b: postgres:18-alpine@sha256:bbbb\n", encoding="utf-8")
+    group = Group(
+        "renovate/stack-images",
+        (
+            docker_update(package_file="compose.yaml"),
+            docker_update(
+                package_file="other.yaml",
+                dep_name="postgres",
+                replace_string="postgres:1-already-gone@sha256:zzzz",
+            ),
+        ),
+    )
+    with pytest.raises(ReplaceError, match="is not in"):
+        apply_group(tmp_path, group)
+    assert first.read_text(encoding="utf-8") == original

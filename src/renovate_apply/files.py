@@ -21,14 +21,21 @@ def apply_group(root: Path, group: Group, *, write: bool = True) -> tuple[str, .
     """
     Make every edit of *group*, and return the package files it touched.
 
+    Every edit is computed before any of them is written, so a group that fails on its second file
+    leaves the first one as it was. Written as it went, that first file would stay edited after the
+    group was reported as failed, and the next group to touch it would stage and commit the edit
+    under its own message.
+
     With ``write=False`` every edit is still computed, so a file the report no longer matches fails
     here as loudly as it would when writing. That is what makes a dry run worth reading.
     """
+    edited: list[tuple[Path, str]] = []
     for package_file in group.package_files:
         path = root / package_file
         mine = [update for update in group.updates if update.package_file == package_file]
-        text = apply_all(_read(path), mine)
-        if write:
+        edited.append((path, apply_all(_read(path), mine)))
+    if write:
+        for path, text in edited:
             _write(path, text)
     return group.package_files
 

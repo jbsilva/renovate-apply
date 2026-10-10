@@ -157,6 +157,40 @@ def test_applies_the_other_groups_when_one_cannot_be_placed(
     assert git(repo, "status", "--porcelain").stdout == ""
 
 
+def test_a_failed_group_leaves_nothing_for_the_next_group_to_commit(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A group that fails puts nothing in the commit of a group that shares one of its files.
+
+    Both groups edit the compose file; the first also edits a hook rev the file no longer holds.
+    Were the compose edit written before that failure, the second group's ``git add`` would stage it
+    and commit an update the run had just reported as not applied.
+    """
+    given_report(
+        monkeypatch,
+        docker_update(branch_name="renovate/first"),
+        hook_update(branch_name="renovate/first", current_value="v9.9.9-gone", new_value="v9.9.10"),
+        docker_update(
+            branch_name="renovate/second",
+            dep_name="postgres",
+            replace_string="postgres:18-alpine@sha256:bbbb",
+            current_value="18-alpine",
+            new_value="18.1-alpine",
+            current_digest="sha256:bbbb",
+            new_digest="sha256:dddd",
+        ),
+    )
+    assert run_cli(str(repo)) == 1
+
+    compose = (repo / "stack" / "compose.yaml").read_text(encoding="utf-8")
+    assert subjects(repo)[1:] == ["deps: update postgres to 18.1-alpine"]
+    assert "atuin:v18.13.3@sha256:aaaa" in compose
+    assert "postgres:18.1-alpine@sha256:dddd" in compose
+    assert git(repo, "status", "--porcelain").stdout == ""
+
+
 def test_says_when_there_is_nothing_to_do(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
