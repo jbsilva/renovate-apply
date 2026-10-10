@@ -11,6 +11,10 @@ class RenovateApplyError(Exception):
     """Base for all renovate-apply domain errors."""
 
 
+class ScanError(RenovateApplyError):
+    """Renovate could not be run, or it finished without writing a report."""
+
+
 class ReportError(RenovateApplyError):
     """The report Renovate wrote is not the shape this tool can read."""
 
