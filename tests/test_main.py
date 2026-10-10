@@ -169,6 +169,20 @@ def test_says_when_there_is_nothing_to_do(
     assert len(subjects(repo)) == 1
 
 
+def test_passes_on_what_renovate_complained_about(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A warning from Renovate is the user's to see, even when the run went fine."""
+    report = report_for(docker_update())
+    report["problems"] = [{"msg": "GitHub rate limit reached"}]
+    monkeypatch.setattr(main_module, "scan", lambda *_args, **_kwargs: report)
+    assert run_cli(str(repo)) == 0
+
+    assert "GitHub rate limit reached" in capsys.readouterr().err
+
+
 def test_skips_a_dependency_named_on_the_command_line(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,

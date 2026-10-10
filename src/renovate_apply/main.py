@@ -26,7 +26,7 @@ from renovate_apply.files import apply_group, split_repeats
 from renovate_apply.git import commit, require_clean, require_repository
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
-from renovate_apply.report import group, held_repeat, read_updates, split
+from renovate_apply.report import group, held_repeat, problems, read_updates, split
 from renovate_apply.scan import scan
 lazy from renovate_apply.models import Group
 
@@ -105,6 +105,9 @@ def _plan(
 
     err.print(f"renovate-apply: scanning {root} ...", style="dim")
     report = scan(root)
+    for problem in problems(report):
+        err.print(f"renovate-apply: renovate reported: {problem}", style="yellow")
+
     to_apply, held = split(read_updates(report), with_major=major, skip=skip)
     to_apply, repeats = split_repeats(root, to_apply)
     held += [Held(update, held_repeat(first)) for update, first in repeats]

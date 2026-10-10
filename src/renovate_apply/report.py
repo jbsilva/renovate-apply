@@ -28,6 +28,18 @@ def held_repeat(first: Update) -> str:
     return f"the same edit as the {first.manager} update, in {first.branch_name}"
 
 
+def problems(report: Mapping[str, object]) -> list[str]:
+    """Return what Renovate complained about, both globally and for the repository."""
+    found: list[str] = []
+    for holder in (report, _repository(report)):
+        for problem in _sequence(holder.get("problems"), "problems"):
+            if isinstance(problem, Mapping):
+                message = _text(problem.get("msg"))
+                if message:
+                    found.append(message)
+    return found
+
+
 def read_updates(report: Mapping[str, object]) -> list[Update]:
     """Return every update in the report, in the order Renovate found them."""
     return list(_iter_updates(report))

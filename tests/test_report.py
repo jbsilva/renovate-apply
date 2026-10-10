@@ -11,6 +11,7 @@ from renovate_apply.report import (
     HELD_RENAME,
     HELD_SKIPPED,
     group,
+    problems,
     read_updates,
     split,
 )
@@ -111,6 +112,14 @@ def test_group_gathers_by_branch_in_the_order_renovate_reported() -> None:
     assert [one.branch for one in groups] == ["renovate/stack-images", "renovate/pre-commit-hooks"]
     assert groups[0].updates == (first, second)
     assert groups[0].package_files == ("stack/compose.yaml",)
+
+
+def test_problems_collects_what_renovate_complained_about() -> None:
+    """Renovate's own warnings are surfaced, from both places it files them."""
+    report = report_for(docker_update())
+    report["problems"] = [{"msg": "global trouble"}]
+    report["repositories"]["local"]["problems"] = [{"msg": "repo trouble"}]
+    assert problems(report) == ["global trouble", "repo trouble"]
 
 
 def test_read_updates_rejects_a_report_with_no_repositories() -> None:
