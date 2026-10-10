@@ -9,3 +9,13 @@ exit codes.
 
 class RenovateApplyError(Exception):
     """Base for all renovate-apply domain errors."""
+
+
+class ReplaceError(RenovateApplyError):
+    """
+    An update cannot be turned into an edit.
+
+    Raised when the string Renovate reported is no longer in the file, when the replacement would
+    change nothing, or when the update uses a template feature this tool does not implement. Every
+    one of these means the file must not be touched.
+    """

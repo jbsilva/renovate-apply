@@ -116,6 +116,17 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"**/tests/{test_*.py,conftest.py,helpers.py}" = [
+    "S101",    # Allow assert in tests
+    "S603",    # The suite drives git itself; the argv is fixed and built right there
+    "S607",    # ditto: git comes from PATH, as it does everywhere else in this package
+    "ARG001",  # Allow unused arguments in tests (for pytest fixtures)
+    "INP001",  # No __init__.py needed - pytest uses --import-mode=importlib
+    "TC001",   # Keep imports at runtime in tests; the import-cost the TC rules guard is irrelevant
+    "TC002",   # here, and a TYPE_CHECKING block for a test's own framework import reads oddly.
+    "TC003",
+    "PLR2004", # A literal version string reads better in the assertion than as a constant above it
+]
 "**/__init__.py" = [
     "D104", # Allow empty __init__.py files
 ]
@@ -168,6 +179,14 @@ suggested_parameter_type = true
 suggested_return_type = true
 incompatible_override = true
 missing_generic_parameters = true
+
+# Tests intentionally use loose typing and assert helpers that pycroscope would flag as suggestions
+[[tool.pycroscope.overrides]]
+module = "tests"
+missing_return_annotation = false
+missing_parameter_annotation = false
+suggested_parameter_type = false
+suggested_return_type = false
 
 [tool.bandit]
 exclude_dirs = [".git", ".venv", "__pycache__", "tests"]
