@@ -31,8 +31,8 @@ _TOKEN = re.compile(
     r"\{\{\{\s*(?P<raw>[\w.]+)\s*\}\}\}"
     r"|\{\{#\s*(?P<block>if|unless)\s+(?P<test>[\w.]+)\s*\}\}"
     r"|\{\{/\s*(?P<close>if|unless)\s*\}\}"
-    # Before the plain-name branch, which would otherwise read {{else}} as a field named "else",
-    # expand it to nothing, and leave both branches of the block in the text.
+    # Must precede the plain-name branch, which would otherwise read {{else}} as a field of that
+    # name, expand it to nothing, and leave both branches of the block in the output.
     r"|\{\{\s*(?P<alt>else)\s*\}\}"
     r"|\{\{\s*(?P<name>[\w.]+)\s*\}\}"
     r"|\{\{(?P<other>[^}]*)\}\}",
