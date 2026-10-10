@@ -39,6 +39,7 @@ dev = [
     "zuban>=0.10.0",
 ]
 test = [
+    "pytest-cov>=7.1.0",
     "pytest>=9.1.1",
 ]
 
@@ -179,6 +180,10 @@ addopts = [
     "--import-mode=importlib",
     "--tb=short",
     "--verbose",
+    "--cov=src/renovate_apply",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=xml:reports/coverage.xml",
 ]
 # Warnings are errors: a new DeprecationWarning from a dependency bump (the exact thing this tool
 # ships) must fail the suite instead of scrolling past.
