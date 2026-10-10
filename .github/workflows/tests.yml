@@ -46,6 +46,15 @@ jobs:
       - name: Run tests
         run: uv run --locked --no-build --no-binary-package renovate-apply pytest
 
+      - name: Upload coverage to Codecov
+        # Upload even when a test fails: pytest-cov still writes the report at session end.
+        # One OS is enough for coverage; the other legs only gate behavior.
+        if: ${{ !cancelled() && matrix.os == 'ubuntu-latest' }}
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: reports/coverage.xml
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
