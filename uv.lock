@@ -33,6 +33,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pycroscope"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typeshed-client" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/67/c5cb4c78c1f50f905902fb8f5ff7dcd5c321b75f1ee123354ae9f26b364f/pycroscope-0.5.0.tar.gz", hash = "sha256:573eb605f49b97e6ff5d85af115de0406b475a239d9cb3db00ccec2ef97a62ba", size = 696137, upload-time = "2026-08-27T18:13:38.707Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/d1/873dac15d2a9f059b5dfb2fdae56d57378023f137d73d61bea5d085e0835/pycroscope-0.5.0-py3-none-any.whl", hash = "sha256:effc2fc347c2b6175bacdd5aad8e242392eba075d22832b441c0c6ecbc7f6517", size = 747967, upload-time = "2026-08-27T18:13:37.043Z" },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -46,6 +59,7 @@ source = { editable = "." }
 [package.dev-dependencies]
 dev = [
     { name = "poethepoet" },
+    { name = "pycroscope" },
     { name = "ruff" },
     { name = "ty" },
     { name = "zuban" },
@@ -56,6 +70,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "poethepoet", specifier = ">=0.48.0" },
+    { name = "pycroscope", specifier = ">=0.5.0" },
     { name = "ruff", specifier = ">=0.17.0" },
     { name = "ty", specifier = ">=0.0.85" },
     { name = "zuban", specifier = ">=0.10.0" },
@@ -109,6 +124,27 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b5/64/0fca31db8c48dc72285f17b878e2c6a015279ab04a26e16f62abb384094f/ty-0.0.85-py3-none-win32.whl", hash = "sha256:0742d21a002481af8d2324b16ce5df210b5bb7673b0ea1096cfc02745c6b7280", size = 13410281, upload-time = "2026-10-06T22:05:34.418Z" },
     { url = "https://files.pythonhosted.org/packages/f6/a8/65d865185ecb18ee45b85cd99b34aedb3d8a4a9fe0438dab695e1390dbb7/ty-0.0.85-py3-none-win_amd64.whl", hash = "sha256:2636f8255b97c357dac1f9f50ca58f58a49642c8adb5c76643f483401a577014", size = 14112013, upload-time = "2026-10-06T22:05:36.946Z" },
     { url = "https://files.pythonhosted.org/packages/24/40/110b4f01af47fbb061f03e2f8e85cb30dd3d9ea614b2059dfaa058a044a5/ty-0.0.85-py3-none-win_arm64.whl", hash = "sha256:953574167a79d9dba7781238879955fa37fea405393710bfe53069ac82dff4d9", size = 13825189, upload-time = "2026-10-06T22:05:39.467Z" },
+]
+
+[[package]]
+name = "typeshed-client"
+version = "2.13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/eb/ef31fadb73c5a9da6e88adf146b9db88282cf17136beb65a1c88905afe2f/typeshed_client-2.13.0.tar.gz", hash = "sha256:85ce73be98a5e3a51cafb2e2921653e3759ce7e9d1530adcca935dec201152f2", size = 532578, upload-time = "2026-08-03T04:11:13.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/2b/83e50380aa9ca001ee74460f027b518eefd330edb7ab7787442424f1e584/typeshed_client-2.13.0-py3-none-any.whl", hash = "sha256:71bc9ed297ddb32d3c4b2d29b5e688c6b0b9a21ca8ce6082d0aa7cee9cad5077", size = 800208, upload-time = "2026-08-03T04:11:12.368Z" },
+]
+
+[[package]]
+name = "typing-extensions"
+version = "4.16.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/cc/6253133b5bb138fc3306cebfbda2c520f545d36b5be2c7255cc528bb45d6/typing_extensions-4.16.0.tar.gz", hash = "sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5", size = 113555, upload-time = "2026-07-02T08:40:05.92Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl", hash = "sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8", size = 45571, upload-time = "2026-07-02T08:40:04.659Z" },
 ]
 
 [[package]]

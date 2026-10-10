@@ -32,6 +32,7 @@ dependencies = []
 [dependency-groups]
 dev = [
     "poethepoet>=0.48.0",
+    "pycroscope>=0.5.0",
     "ruff>=0.17.0",
     "ty>=0.0.85",
     "zuban>=0.10.0",
@@ -70,6 +71,10 @@ cmd = "ty check"
 [tool.poe.tasks.zuban]
 help = "Strict type check with zuban, which no hook or CI job runs"
 cmd = "zuban check"
+
+[tool.poe.tasks.pycroscope]
+help = "Semi-static analysis with pycroscope, which no hook or CI job runs"
+cmd = "pycroscope --config-file pyproject.toml"
 
 [tool.poe.tasks.hooks]
 help = "Run every prek hook on all files"
@@ -129,3 +134,23 @@ strict = true
 disallow_untyped_defs = true
 warn_unreachable = true
 python_executable = ".venv/bin/python"
+
+[tool.pycroscope]
+# Directory to analyze (relative to pyproject.toml) and the import root for the src layout
+paths = ["src/renovate_apply"]
+import_paths = ["src"]
+
+# Output one issue per line, easier to scan and grep.
+output_format = "concise"
+
+# Checks
+possibly_undefined_name = true
+unused_variable = true
+value_always_true = true
+use_fstrings = true
+missing_return_annotation = true
+missing_parameter_annotation = true
+suggested_parameter_type = true
+suggested_return_type = true
+incompatible_override = true
+missing_generic_parameters = true
