@@ -13,3 +13,8 @@ hooks = [
   { id = "mixed-line-ending" },
   { id = "trailing-whitespace" },
 ]
+
+[[repos]]
+repo = "https://github.com/astral-sh/uv-pre-commit"
+rev = "0.13.0"
+hooks = [{ id = "uv-lock" }]
