@@ -54,6 +54,8 @@ Issues = "https://github.com/jbsilva/renovate-apply/issues"
 
 [project.scripts]
 renovate-apply = "renovate_apply.main:main"
+# Short alias, because this is typed often and interactively. It is the same entry point.
+rnv = "renovate_apply.main:main"
 
 [tool.uv]
 # `uv run pytest` is the documented way to run the suite, and uv syncs to the default groups before
