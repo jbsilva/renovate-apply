@@ -33,6 +33,9 @@ dependencies = []
 Repository = "https://github.com/jbsilva/renovate-apply"
 Issues = "https://github.com/jbsilva/renovate-apply/issues"
 
+[tool.uv]
+exclude-newer = "1 day"
+
 [build-system]
 requires = ["uv_build>=0.12.23,<1.0.0"]
 build-backend = "uv_build"
