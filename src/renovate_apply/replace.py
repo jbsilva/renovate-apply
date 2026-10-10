@@ -113,10 +113,10 @@ def apply_all(text: str, updates: Sequence[Update]) -> str:
     string that really is in the file twice is edited twice, and a repeat with nothing left to find
     is a line this run already updated, not a file that moved underneath the report.
     """
-    resume: dict[tuple[str, str], int] = {}
+    resume: dict[tuple[str, str, str], int] = {}
     for update in updates:
         search, replacement = search_and_replacement(update)
-        key = (search, replacement)
+        key = (update.dep_name, search, replacement)
         at = _locate(text, update, search, resume.get(key))
         if at is None:
             continue
@@ -158,7 +158,10 @@ def _locate(text: str, update: Update, search: str, resume: int | None) -> int |
     Once one edit has been made, the text being gone means the repeat has nothing left to do, which
     is None. Not finding it on the first try is a file the report no longer describes.
     """
-    at = text.find(search, _anchor(text, update) if resume is None else resume)
+    start = _anchor(text, update, resume)
+    if start is None:
+        return None
+    at = text.find(search, start)
     if at >= 0:
         return at
     if resume is not None:
@@ -167,16 +170,21 @@ def _locate(text: str, update: Update, search: str, resume: int | None) -> int |
     raise ReplaceError(msg)
 
 
-def _anchor(text: str, update: Update) -> int:
+def _anchor(text: str, update: Update, resume: int | None) -> int | None:
     """
-    Return where to start looking for the first edit of a dependency.
+    Return where to start looking for the edit of a dependency.
 
     With no ``replaceString`` the search text is a bare version, so the dependency's name anchors
-    it: the version that belongs to this dependency is the first one after its name.
+    it: the version that belongs to this dependency is the first one after its name. A repeat
+    whose name is not found again after *resume* has nothing left to edit, which is None.
     """
+    start = 0 if resume is None else resume
     if update.replace_string is not None:
-        return 0
-    return max(text.find(update.dep_name), 0)
+        return start
+    found = text.find(update.dep_name, start)
+    if found >= 0:
+        return found
+    return 0 if resume is None else None
 
 
 def _moves(current: str | None, new: str | None) -> bool:

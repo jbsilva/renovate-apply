@@ -276,3 +276,33 @@ def test_same_edit_is_not_an_edit_that_cannot_be_placed() -> None:
     """When either edit misses the file, nothing is shown to be the same, and nothing is dropped."""
     action, regex = wrangler_updates(replace_string='wranglerVersion: "4.0.0"')
     assert not same_edit(WORKFLOW, action, regex)
+
+
+def test_apply_all_two_hooks_sharing_a_version_are_both_updated() -> None:
+    """Two hooks on the same rev are both updated regardless of order in the update list."""
+    text = (
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.16.5\n"
+        "  - repo: https://github.com/crate-ci/typos\n    rev: v0.16.5\n"
+    )
+    typos = hook_update(dep_name="crate-ci/typos", current_value="v0.16.5", new_value="v0.16.9")
+    ruff = hook_update(
+        dep_name="astral-sh/ruff-pre-commit", current_value="v0.16.5", new_value="v0.16.9"
+    )
+    updated = apply_all(text, [typos, ruff])
+    assert "ruff-pre-commit\n    rev: v0.16.9" in updated
+    assert "typos\n    rev: v0.16.9" in updated
+
+
+def test_apply_all_repeated_hook_anchors_past_other_hooks_on_the_same_rev() -> None:
+    """A repeated hook searches for its own name past previous edits, not just any match."""
+    text = (
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.16.5\n"
+        "  - repo: https://github.com/crate-ci/typos\n    rev: v0.16.5\n"
+        "  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.16.5\n"
+    )
+    ruff = hook_update(
+        dep_name="astral-sh/ruff-pre-commit", current_value="v0.16.5", new_value="v0.16.9"
+    )
+    updated = apply_all(text, [ruff, ruff])
+    assert "typos\n    rev: v0.16.5" in updated
+    assert updated.count("rev: v0.16.9") == 2
