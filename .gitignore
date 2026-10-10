@@ -12,3 +12,6 @@ wheels/
 # Test coverage
 .coverage
 lcov.info
+
+# Generated CI artifacts (coverage.xml, ruff/bandit reports, scan logs)
+reports/
