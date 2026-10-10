@@ -51,6 +51,53 @@ def test_render_handles_nested_blocks_and_unless() -> None:
     assert unpinned == "a/b@v2"
 
 
+def test_render_takes_the_else_branch_when_the_test_is_false() -> None:
+    """
+    An {{else}} is a second branch, not a field named "else".
+
+    Read as a field it expands to nothing, which leaves both branches in the text and writes a
+    reference that was never in the report: the one failure this module exists to prevent.
+    """
+    template = "{{depName}}{{#if newDigest}}@{{newDigest}}{{else}}:{{newValue}}{{/if}}"
+    pinned = render(template, {"depName": "a/b", "newDigest": "abc123", "newValue": "v2"})
+    unpinned = render(template, {"depName": "a/b", "newDigest": None, "newValue": "v2"})
+    assert pinned == "a/b@abc123"
+    assert unpinned == "a/b:v2"
+
+
+def test_render_takes_the_else_branch_of_an_unless() -> None:
+    """{{#unless}} inverts the test, so its {{else}} runs when the field is set."""
+    template = "{{#unless newDigest}}{{newValue}}{{else}}{{newDigest}}{{/unless}}"
+    assert render(template, {"newDigest": "abc123", "newValue": "v2"}) == "abc123"
+    assert render(template, {"newDigest": None, "newValue": "v2"}) == "v2"
+
+
+def test_render_handles_an_else_inside_a_nested_block() -> None:
+    """The branch a nested block selects is the caller's text, else branch included."""
+    template = "{{#if a}}{{#if b}}B{{else}}NOT-B{{/if}}{{else}}NOT-A{{/if}}"
+    assert render(template, {"a": "1", "b": "1"}) == "B"
+    assert render(template, {"a": "1", "b": None}) == "NOT-B"
+    assert render(template, {"a": None, "b": "1"}) == "NOT-A"
+
+
+def test_render_rejects_an_else_outside_a_block() -> None:
+    """An {{else}} with no block around it is a template this tool has misread."""
+    with pytest.raises(ReplaceError, match="outside a block"):
+        render("x{{else}}y", {})
+
+
+def test_render_rejects_two_else_branches_in_one_block() -> None:
+    """Which of the three branches wins is a guess, so it is not made."""
+    with pytest.raises(ReplaceError, match="two"):
+        render("{{#if a}}x{{else}}y{{else}}z{{/if}}", {"a": "1"})
+
+
+def test_render_rejects_an_else_if_chain() -> None:
+    """{{else if}} is a third branch this tool does not render; it stops rather than drop one."""
+    with pytest.raises(ReplaceError, match="unsupported template expression"):
+        render("{{#if a}}x{{else if b}}y{{/if}}", {"a": None, "b": "1"})
+
+
 def test_render_rejects_an_expression_it_does_not_implement() -> None:
     """A template feature this tool cannot render stops it, rather than writing a guess."""
     with pytest.raises(ReplaceError, match="unsupported template expression"):

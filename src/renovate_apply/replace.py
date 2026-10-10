@@ -31,6 +31,9 @@ _TOKEN = re.compile(
     r"\{\{\{\s*(?P<raw>[\w.]+)\s*\}\}\}"
     r"|\{\{#\s*(?P<block>if|unless)\s+(?P<test>[\w.]+)\s*\}\}"
     r"|\{\{/\s*(?P<close>if|unless)\s*\}\}"
+    # Before the plain-name branch, which would otherwise read {{else}} as a field named "else",
+    # expand it to nothing, and leave both branches of the block in the text.
+    r"|\{\{\s*(?P<alt>else)\s*\}\}"
     r"|\{\{\s*(?P<name>[\w.]+)\s*\}\}"
     r"|\{\{(?P<other>[^}]*)\}\}",
 )
@@ -40,10 +43,11 @@ def render(template: str, values: Mapping[str, str | None]) -> str:
     """
     Expand a replacement template against the fields of an update.
 
-    Supports ``{{name}}``, ``{{{name}}}``, ``{{#if name}}`` and ``{{#unless name}}``, nested. A name
-    that is missing or empty counts as false, the way handlebars reads it.
+    Supports ``{{name}}``, ``{{{name}}}``, ``{{#if name}}`` and ``{{#unless name}}``, nested, each
+    with an optional ``{{else}}``. A name that is missing or empty counts as false, the way
+    handlebars reads it.
     """
-    text, end = _render(template, values, 0, None)
+    text, end, _ = _render(template, values, 0, None)
     if end != len(template):  # pragma: no cover - _render only stops early on a close tag
         msg = f"template has a stray closing tag: {template!r}"
         raise ReplaceError(msg)
@@ -185,8 +189,13 @@ def _render(
     values: Mapping[str, str | None],
     start: int,
     until: str | None,
-) -> tuple[str, int]:
-    """Expand from *start* until the close tag *until*, returning the text and where it stopped."""
+) -> tuple[str, int, bool]:
+    """
+    Expand from *start* to the close tag *until*, or to this block's ``{{else}}``.
+
+    Returns the text, where it stopped, and whether it stopped on an ``{{else}}`` rather than on the
+    close tag, which is what tells the caller another branch follows.
+    """
     out: list[str] = []
     position = start
     for match in _TOKEN.finditer(template, start):
@@ -194,25 +203,64 @@ def _render(
             continue  # inside a block that was already expanded by the recursive call below
         out.append(template[position : match.start()])
         position = match.end()
-        name = match.group("raw") or match.group("name")
-        block = match.group("block")
-        close = match.group("close")
-        if name is not None:
-            out.append(values.get(name) or "")
-        elif block is not None:
-            body, position = _render(template, values, position, block)
-            if bool(values.get(match.group("test"))) is (block == "if"):
-                out.append(body)
-        elif close is not None:
-            if close != until:
-                msg = f"template closes {{{{/{close}}}}} that was never opened: {template!r}"
-                raise ReplaceError(msg)
-            return "".join(out), position
-        else:
-            msg = f"unsupported template expression {match.group(0)!r} in {template!r}"
-            raise ReplaceError(msg)
+        if _terminates(match, template, until):
+            return "".join(out), position, match.group("alt") is not None
+        body, position = _expand(match, template, values, position)
+        out.append(body)
     if until is not None:
         msg = f"template never closes {{{{#{until}}}}}: {template!r}"
         raise ReplaceError(msg)
     out.append(template[position:])
-    return "".join(out), len(template)
+    return "".join(out), len(template), False
+
+
+def _terminates(match: re.Match[str], template: str, until: str | None) -> bool:
+    """Say whether this token ends the block being expanded, refusing one that closes nothing."""
+    close = match.group("close")
+    if close is not None:
+        if close != until:
+            msg = f"template closes {{{{/{close}}}}} that was never opened: {template!r}"
+            raise ReplaceError(msg)
+        return True
+    if match.group("alt") is None:
+        return False
+    if until is None:
+        msg = f"template has an {{{{else}}}} outside a block: {template!r}"
+        raise ReplaceError(msg)
+    return True
+
+
+def _expand(
+    match: re.Match[str],
+    template: str,
+    values: Mapping[str, str | None],
+    position: int,
+) -> tuple[str, int]:
+    """Expand one token that is not a terminator, returning its text and where to carry on."""
+    name = match.group("raw") or match.group("name")
+    if name is not None:
+        return values.get(name) or "", position
+    block = match.group("block")
+    if block is not None:
+        return _render_block(template, values, position, block, match.group("test"))
+    msg = f"unsupported template expression {match.group(0)!r} in {template!r}"
+    raise ReplaceError(msg)
+
+
+def _render_block(
+    template: str,
+    values: Mapping[str, str | None],
+    start: int,
+    block: str,
+    test: str,
+) -> tuple[str, int]:
+    """Expand one ``{{#if}}`` or ``{{#unless}}``, returning the branch its test selects."""
+    body, position, had_else = _render(template, values, start, block)
+    alternative = ""
+    if had_else:
+        alternative, position, again = _render(template, values, position, block)
+        if again:
+            msg = f"template has two {{{{else}}}} in one block: {template!r}"
+            raise ReplaceError(msg)
+    taken = bool(values.get(test)) is (block == "if")
+    return (body if taken else alternative), position
