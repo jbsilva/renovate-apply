@@ -479,3 +479,28 @@ def test_dry_run_beats_stage(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert (repo / "stack" / "compose.yaml").read_text(encoding="utf-8") == before
     assert git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_a_commit_failure_stops_the_run_before_the_next_group(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A commit failure leaves the index dirty, so subsequent groups must not commit over it."""
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    hook.chmod(0o755)
+    given_report(
+        monkeypatch,
+        docker_update(branch_name="renovate/first"),
+        hook_update(branch_name="renovate/second"),
+    )
+    assert run_cli(str(repo)) == 1
+
+    captured = capsys.readouterr()
+    assert "commit failed" in captured.err
+    assert "Groups not tried: 1" in captured.err
+    assert "2 of 2 groups could not be applied" in captured.out
+    assert "Committed" not in captured.out
+    hooks = (repo / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "typos\n    rev: v0.16.5" in hooks

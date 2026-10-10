@@ -23,7 +23,7 @@ from rich.console import Console
 
 from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
-from renovate_apply.errors import LockError, NoSolutionError, RenovateApplyError
+from renovate_apply.errors import GitError, LockError, NoSolutionError, RenovateApplyError
 from renovate_apply.files import apply_group, restore, snapshot, split_repeats
 from renovate_apply.git import commit, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
@@ -194,12 +194,15 @@ def _perform(
     applied. Each group is its own commit and its own set of files, so one of them failing says
     nothing about the rest, and losing the whole run to one stale dependency helps nobody.
 
+    A git failure is the exception: it leaves that group staged, and the next commit would take it
+    in under another message. The run stops there, and the groups not tried count as failed.
+
     Returns the groups that failed, for the caller to exit on, and the groups uv could not lock,
     which are held back rather than failed: the edit is sound, the dependency tree is not ready.
     """
     failed: list[Group] = []
     unsolved: list[Group] = []
-    for one in groups:
+    for index, one in enumerate(groups):
         try:
             _perform_group(root, one, prefix=prefix, mode=mode, lock=lock)
         except NoSolutionError as error:
@@ -209,7 +212,17 @@ def _perform(
         except RenovateApplyError as error:
             err.print(f"renovate-apply: {error}", style="red")
             failed.append(one)
+            if isinstance(error, GitError):
+                failed += _stop(groups[index + 1 :])
+                break
     return failed, unsolved
+
+
+def _stop(rest: list[Group]) -> list[Group]:
+    """Say that the run stops before *rest*, and return them to be counted as failed."""
+    if rest:
+        err.print(f"renovate-apply: the run stops here. Groups not tried: {len(rest)}", style="red")
+    return rest
 
 
 def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: bool) -> None:

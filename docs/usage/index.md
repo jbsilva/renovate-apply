@@ -59,8 +59,20 @@ renovate-apply: postgres: 'postgres:18-alpine' is not in stack/compose.yaml. Was
 Nothing of that group is written, not even the files it could have edited. Each group is all of its
 files or none of them.
 
-Only a failure before the first group stops the whole run: a scan that would not start, or a working
-copy that is not clean.
+A failure before the first group stops the whole run: a scan that does not start, or a working copy
+that is not clean.
+
+A failed `git add` or `git commit` also stops the run. That group stays staged, and the next commit
+takes it in under the wrong message. The groups after it are not tried and count as failed:
+
+```console
+renovate-apply: the commit failed, most likely a hook. The files are written and staged,
+and nothing was undone:
+...
+renovate-apply: the run stops here. Groups not tried: 1
+
+2 of 2 groups could not be applied.
+```
 
 ## The working copy must be clean
 
