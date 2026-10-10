@@ -3,6 +3,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-007EC7.svg?style=flat-square)](https://github.com/jbsilva/renovate-apply/blob/main/LICENSE)
 [![Python 3.15+](https://img.shields.io/badge/python-3.15+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![PyPI version](https://img.shields.io/pypi/v/renovate-apply.svg?style=flat-square)](https://pypi.org/project/renovate-apply)
+[![Documentation](https://img.shields.io/badge/docs-jbsilva.github.io-blue.svg?style=flat-square)](https://jbsilva.github.io/renovate-apply/)
 [![tests](https://github.com/jbsilva/renovate-apply/actions/workflows/tests.yml/badge.svg)](https://github.com/jbsilva/renovate-apply/actions/workflows/tests.yml)
 [![CodeQL](https://github.com/jbsilva/renovate-apply/actions/workflows/codeql.yml/badge.svg)](https://github.com/jbsilva/renovate-apply/actions/workflows/codeql.yml)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=jbsilva_renovate-apply&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=jbsilva_renovate-apply)
@@ -14,6 +15,8 @@
 Apply the dependency updates [Renovate](https://docs.renovatebot.com) finds, in your working copy,
 without a pull request. One commit per group, the same grouping your Renovate configuration gives a
 pull request. Nothing is pushed.
+
+**Full documentation:** <https://jbsilva.github.io/renovate-apply/>
 
 ```console
 $ rnv
@@ -178,6 +181,7 @@ reason:
 uv sync --group dev --group test
 uv run pytest
 uv run poe check
+uv run poe docs   # preview the documentation site
 ```
 
 ## License

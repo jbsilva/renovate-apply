@@ -82,6 +82,11 @@ uv run poe test    # The test suite
 `uv run poe` lists every task. Two of them run only when asked, and no hook or CI job runs them:
 `poe zuban`, a strict mypy-compatible type check, and `poe pycroscope`, a semi-static analyzer.
 
+The documentation site is built with [Zensical](https://zensical.org) from `docs/` and
+`zensical.toml`. Preview it with `uv run poe docs`; `docs.yml` publishes it to GitHub Pages.
+Behavior changes need the matching page updated in the same commit: nothing checks this
+automatically. `docs/development/documentation.md` has the conventions.
+
 Anything under `.github/workflows/` is audited by [`zizmor`](https://docs.zizmor.sh)
 (`uv run zizmor .`), as a prek hook and in `zizmor.yml`, which also uploads SARIF to the Security
 tab. A workflow edit must keep it clean: actions pinned to a full commit SHA,
