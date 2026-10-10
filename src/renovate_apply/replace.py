@@ -5,12 +5,20 @@ Renovate calls this auto-replace, and the report carries both halves of it. ``re
 exact text the manager found in the file. ``autoReplaceStringTemplate`` is how to write that text
 again with the new version or digest in it. Rendering the second and swapping it for the first is
 the whole edit, and it is what Renovate itself commits.
+
+Two managers give less than that:
+
+- Some give a ``replaceString`` and no template. The new text is then the old text with the version
+  and the digest substituted, which is Renovate's own fallback.
+- Some give neither, the pre-commit manager among them. The text to look for is then the bare
+  version.
 """
 
 import re
 lazy from collections.abc import Mapping
 
 from renovate_apply.errors import ReplaceError
+lazy from renovate_apply.models import Update
 
 
 # The templates are handlebars, but a replacement template only ever uses these forms. Anything
@@ -36,6 +44,64 @@ def render(template: str, values: Mapping[str, str | None]) -> str:
         msg = f"template has a stray closing tag: {template!r}"
         raise ReplaceError(msg)
     return text
+
+
+def template_values(update: Update) -> dict[str, str | None]:
+    """Return the fields a replacement template can name, as Renovate names them."""
+    return {
+        "depName": update.dep_name,
+        "packageName": update.dep_name,
+        "currentValue": update.current_value,
+        "currentDigest": update.current_digest,
+        "newValue": update.new_value,
+        "newDigest": update.new_digest,
+        "newName": update.new_name,
+    }
+
+
+def search_and_replacement(update: Update) -> tuple[str, str]:
+    """
+    Return the text to find in the package file and the text to put in its place.
+
+    Raises ReplaceError when the report does not say enough to make an edit, or when the two come
+    out the same, which would mean writing the file for nothing.
+    """
+    search = _search_string(update)
+    replacement = _replacement_string(update, search)
+    if search == replacement:
+        msg = f"{update.dep_name}: the replacement is the text it replaces"
+        raise ReplaceError(msg)
+    return search, replacement
+
+
+def _search_string(update: Update) -> str:
+    """Return the text the manager found, or the bare version when it reported none."""
+    if update.replace_string is not None:
+        return update.replace_string
+    digest_moves = _moves(update.current_digest, update.new_digest)
+    value_moves = _moves(update.current_value, update.new_value)
+    fallback = update.current_digest if digest_moves and not value_moves else update.current_value
+    if not fallback:
+        msg = f"{update.dep_name}: the report does not say what text to replace"
+        raise ReplaceError(msg)
+    return fallback
+
+
+def _replacement_string(update: Update, search: str) -> str:
+    """Render the template, or substitute the version and the digest into the text found."""
+    if update.replace_template:
+        return render(update.replace_template, template_values(update))
+    replacement = search
+    if _moves(update.current_value, update.new_value):
+        replacement = replacement.replace(str(update.current_value), str(update.new_value), 1)
+    if _moves(update.current_digest, update.new_digest):
+        replacement = replacement.replace(str(update.current_digest), str(update.new_digest), 1)
+    return replacement
+
+
+def _moves(current: str | None, new: str | None) -> bool:
+    """Say whether both sides are there and they differ."""
+    return bool(current and new and current != new)
 
 
 def _render(

@@ -195,6 +195,9 @@ exclude_dirs = [".git", ".venv", "__pycache__", "tests"]
 skips = ['tests/test_*.py']
 
 [tool.pytest.ini_options]
+# tests/ on the path so the modules there can import `helpers`. Under --import-mode=importlib a
+# test module is not part of a package, so a plain `from helpers import ...` would not resolve.
+pythonpath = ["tests"]
 addopts = [
     "-ra",
     "--durations=10",
