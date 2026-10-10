@@ -51,6 +51,7 @@ def apply_updates(
     # Named --commit so cyclopts derives the negative as --no-commit, which is what is typed.
     commit_each: Annotated[bool, Parameter(name="--commit")] = True,
     major: bool = False,
+    skip: list[str] | None = None,
 ) -> None:
     """
     Apply the updates Renovate finds, one commit per group.
@@ -66,11 +67,15 @@ def apply_updates(
         review of everything at once.
     major
         Include major updates, which are held back by default.
+    skip
+        Hold a dependency back by name, as a glob, repeatable. This is how a repository keeps a
+        dependency that its Renovate configuration sends to the dependency dashboard, which the
+        report gives no way to see.
     """
     root = directory.resolve()
     committing = commit_each and not dry_run
     try:
-        groups, held = _plan(root, major=major, committing=committing)
+        groups, held = _plan(root, major=major, committing=committing, skip=skip or [])
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
@@ -86,6 +91,7 @@ def _plan(
     *,
     major: bool,
     committing: bool,
+    skip: list[str],
 ) -> tuple[list[Group], list[Held]]:
     """Check the working copy, run the scan, and return what to do with what came back."""
     require_repository(root)
@@ -94,7 +100,7 @@ def _plan(
 
     err.print(f"renovate-apply: scanning {root} ...", style="dim")
     report = scan(root)
-    to_apply, held = split(read_updates(report), with_major=major)
+    to_apply, held = split(read_updates(report), with_major=major, skip=skip)
     return group(to_apply), held
 
 

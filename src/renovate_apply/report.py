@@ -7,6 +7,7 @@ loudly in this one module instead of halfway through an edit.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
+from fnmatch import fnmatchcase
 
 from renovate_apply.errors import ReportError
 from renovate_apply.models import Group, Held, Update
@@ -18,6 +19,7 @@ LOCAL_REPOSITORY = "local"
 HELD_PENDING = "waiting out minimumReleaseAge"
 HELD_MAJOR = "major, use --major to include it"
 HELD_RENAME = "a rename, which this tool does not write"
+HELD_SKIPPED = "skipped by configuration"
 HELD_LOCKFILE = "a lock file update, the manifest does not change"
 
 
@@ -30,6 +32,7 @@ def split(
     updates: Sequence[Update],
     *,
     with_major: bool,
+    skip: Sequence[str] = (),
 ) -> tuple[list[Update], list[Held]]:
     """
     Split the updates into the ones to apply and the ones to hold back, with a reason each.
@@ -37,11 +40,14 @@ def split(
     A major is held unless asked for. Renovate can be configured to send some majors to the
     dependency dashboard for approval by hand, and the report does not say which ones carry that
     flag, so holding every major is the only reading that cannot contradict the configuration.
+
+    *skip* holds a dependency by name, as a glob. That is the answer to the same blind spot on a
+    non-major: a repository that keeps one dependency on the dashboard names it here.
     """
     to_apply: list[Update] = []
     held: list[Held] = []
     for update in updates:
-        reason = _hold_reason(update, with_major=with_major)
+        reason = _hold_reason(update, with_major=with_major, skip=skip)
         if reason is None:
             to_apply.append(update)
         else:
@@ -57,8 +63,10 @@ def group(updates: Sequence[Update]) -> list[Group]:
     return [Group(branch, tuple(members)) for branch, members in branches.items()]
 
 
-def _hold_reason(update: Update, *, with_major: bool) -> str | None:
+def _hold_reason(update: Update, *, with_major: bool, skip: Sequence[str]) -> str | None:
     """Return why this update is not applied, or None when it is."""
+    if any(fnmatchcase(update.dep_name, pattern) for pattern in skip):
+        return HELD_SKIPPED
     if update.new_name is not None and update.new_name != update.dep_name:
         return HELD_RENAME
     if update.is_lockfile_update:

@@ -9,6 +9,7 @@ from renovate_apply.report import (
     HELD_MAJOR,
     HELD_PENDING,
     HELD_RENAME,
+    HELD_SKIPPED,
     group,
     read_updates,
     split,
@@ -135,3 +136,17 @@ def test_read_updates_rejects_a_field_of_the_wrong_type() -> None:
     report = {"repositories": {"local": {"packageFiles": {"docker-compose": "nope"}}}}
     with pytest.raises(ReportError, match="not a list"):
         read_updates(report)
+
+
+def test_split_holds_a_dependency_named_in_skip() -> None:
+    """A glob is how a repository keeps a dependency its dashboard is meant to approve."""
+    _, held = split([docker_update()], with_major=False, skip=["ghcr.io/atuinsh/*"])
+    assert held[0].reason == HELD_SKIPPED
+
+
+def test_split_applies_a_dependency_no_pattern_matches() -> None:
+    """A pattern that misses changes nothing about the rest of the run."""
+    update = docker_update()
+    to_apply, held = split([update], with_major=False, skip=["python", "postgres"])
+    assert to_apply == [update]
+    assert held == []

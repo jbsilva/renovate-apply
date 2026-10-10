@@ -148,3 +148,16 @@ def test_says_when_there_is_nothing_to_do(
 
     assert "Nothing to apply." in capsys.readouterr().out
     assert len(subjects(repo)) == 1
+
+
+def test_skips_a_dependency_named_on_the_command_line(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--skip is the answer to a dependency the report cannot say is on the dashboard."""
+    given_report(monkeypatch, docker_update(), hook_update())
+    assert run_cli(str(repo), "--skip", "ghcr.io/atuinsh/*") == 0
+
+    assert "skipped by configuration" in capsys.readouterr().out
+    assert subjects(repo)[1:] == ["deps: update crate-ci/typos to v0.16.9"]
