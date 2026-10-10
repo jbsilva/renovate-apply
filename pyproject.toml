@@ -34,6 +34,7 @@ dev = [
     "poethepoet>=0.48.0",
     "ruff>=0.17.0",
     "ty>=0.0.85",
+    "zuban>=0.10.0",
 ]
 
 [project.urls]
@@ -45,6 +46,7 @@ exclude-newer = "1 day"
 
 [tool.uv.exclude-newer-package]
 ruff = "6 hours"
+zuban = "6 hours"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<1.0.0"]
@@ -64,6 +66,10 @@ cmd = "ruff format ."
 [tool.poe.tasks.typecheck]
 help = "Type check with ty"
 cmd = "ty check"
+
+[tool.poe.tasks.zuban]
+help = "Strict type check with zuban, which no hook or CI job runs"
+cmd = "zuban check"
 
 [tool.poe.tasks.hooks]
 help = "Run every prek hook on all files"
@@ -117,3 +123,9 @@ pre-summary-newline = true
 [tool.ty.terminal]
 # A warning is a finding like any other: it fails the hook and CI instead of scrolling past.
 error-on-warning = true
+
+[tool.zuban]
+strict = true
+disallow_untyped_defs = true
+warn_unreachable = true
+python_executable = ".venv/bin/python"
