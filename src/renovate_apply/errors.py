@@ -29,6 +29,10 @@ class ReplaceError(RenovateApplyError):
     """
 
 
+class LockError(RenovateApplyError):
+    """The lock file beside an edited manifest could not be refreshed."""
+
+
 class GitError(RenovateApplyError):
     """A git command failed, most often a commit a hook refused."""
 

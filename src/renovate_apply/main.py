@@ -24,6 +24,7 @@ from renovate_apply import __version__
 from renovate_apply.errors import RenovateApplyError
 from renovate_apply.files import apply_group, split_repeats
 from renovate_apply.git import commit, require_clean, require_repository
+from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
 from renovate_apply.report import group, held_repeat, problems, read_updates, split
@@ -52,6 +53,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     # Named --commit so cyclopts derives the negative as --no-commit, which is what is typed.
     commit_each: Annotated[bool, Parameter(name="--commit")] = True,
     major: bool = False,
+    lock: bool = True,
     skip: list[str] | None = None,
     prefix: str = DEFAULT_PREFIX,
     renovate_version: str | None = None,
@@ -71,6 +73,9 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         review of everything at once.
     major
         Include major updates, which are held back by default.
+    lock
+        Run ``uv lock`` after editing a ``pyproject.toml`` that has a ``uv.lock`` beside it, and
+        commit the two together. ``--no-lock`` leaves the lock file to you.
     skip
         Hold a dependency back by name, as a glob, repeatable. This is how a repository keeps a
         dependency that its Renovate configuration sends to the dependency dashboard, which the
@@ -99,7 +104,14 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
-    failed = _perform(root, groups, prefix=prefix, dry_run=dry_run, committing=committing)
+    failed = _perform(
+        root,
+        groups,
+        prefix=prefix,
+        dry_run=dry_run,
+        committing=committing,
+        lock=lock,
+    )
     _report_held(held)
     _report_outcome(groups, failed, dry_run=dry_run, committing=committing)
     if failed:
@@ -131,13 +143,14 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     return group(to_apply), held
 
 
-def _perform(
+def _perform(  # noqa: PLR0913 - one argument per switch the command was given
     root: Path,
     groups: list[Group],
     *,
     prefix: str,
     dry_run: bool,
     committing: bool,
+    lock: bool,
 ) -> list[Group]:
     """
     Apply each group in turn, committing as it goes unless told not to.
@@ -156,6 +169,7 @@ def _perform(
                 prefix=prefix,
                 dry_run=dry_run,
                 committing=committing,
+                lock=lock,
             )
         except RenovateApplyError as error:
             err.print(f"renovate-apply: {error}", style="red")
@@ -163,13 +177,14 @@ def _perform(
     return failed
 
 
-def _perform_group(
+def _perform_group(  # noqa: PLR0913 - one argument per switch the command was given
     root: Path,
     one: Group,
     *,
     prefix: str,
     dry_run: bool,
     committing: bool,
+    lock: bool,
 ) -> None:
     """Apply one group, and commit it when the run commits."""
     paragraphs = message(one, prefix)
@@ -178,8 +193,15 @@ def _perform_group(
     out.print(paragraphs[0], style="bold")
     for name, moved in moves(one):
         out.print(f"    {name}  {moved}")
+    if dry_run:
+        return
+    # The lock file is refreshed before the commit, so the manifest and the lock file that matches
+    # it are one commit, which is how Renovate's own pull request carries them.
+    locks = refresh(root, package_files) if lock else ()
+    for refreshed in locks:
+        out.print(f"    {refreshed}  refreshed", style="dim")
     if committing:
-        commit(root, package_files, paragraphs)
+        commit(root, [*package_files, *locks], paragraphs)
 
 
 def _report_held(held: list[Held]) -> None:

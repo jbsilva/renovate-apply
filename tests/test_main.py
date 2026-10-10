@@ -1,5 +1,6 @@
 """The command itself, over a real repository, with the scan replaced by a report."""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -214,3 +215,39 @@ def test_one_line_two_managers_found_is_one_commit(
     assert 'wranglerVersion: "4.148.0"' in (repo / action.package_file).read_text(encoding="utf-8")
     held = "the same edit as the github-actions update, in renovate/github-actions"
     assert f"wrangler -> 4.148.0 ({held})" in capsys.readouterr().out
+
+
+def test_refreshes_the_lock_file_beside_an_edited_manifest(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The manifest and the lock file that matches it belong in the same commit."""
+    (repo / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")
+    (repo / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add a manifest")
+
+    def fake_refresh(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
+        assert package_files == ("pyproject.toml",)
+        (root / "uv.lock").write_text("version = 1  # relocked\n", encoding="utf-8")
+        return ("uv.lock",)
+
+    monkeypatch.setattr(main_module, "refresh", fake_refresh)
+    given_report(
+        monkeypatch,
+        docker_update(
+            manager="pep621",
+            package_file="pyproject.toml",
+            dep_name="cyclopts",
+            replace_string='name = "x"',
+            replace_template=None,
+            current_value="x",
+            new_value="y",
+            current_digest=None,
+            new_digest=None,
+        ),
+    )
+    assert run_cli(str(repo)) == 0
+
+    files = git(repo, "show", "--name-only", "--pretty=", "HEAD").stdout.split()
+    assert files == ["pyproject.toml", "uv.lock"]
