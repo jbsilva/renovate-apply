@@ -24,7 +24,7 @@ from renovate_apply import __version__
 from renovate_apply.errors import RenovateApplyError
 from renovate_apply.files import apply_group, split_repeats
 from renovate_apply.git import commit, require_clean, require_repository
-from renovate_apply.messages import message, moves
+from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
 from renovate_apply.report import group, held_repeat, read_updates, split
 from renovate_apply.scan import scan
@@ -45,7 +45,7 @@ err = Console(markup=False, highlight=False, soft_wrap=True, stderr=True)
 
 
 @app.default
-def apply_updates(
+def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single flat command
     directory: Path = Path(),
     *,
     dry_run: bool = False,
@@ -53,6 +53,7 @@ def apply_updates(
     commit_each: Annotated[bool, Parameter(name="--commit")] = True,
     major: bool = False,
     skip: list[str] | None = None,
+    prefix: str = DEFAULT_PREFIX,
 ) -> None:
     """
     Apply the updates Renovate finds, one commit per group.
@@ -72,6 +73,9 @@ def apply_updates(
         Hold a dependency back by name, as a glob, repeatable. This is how a repository keeps a
         dependency that its Renovate configuration sends to the dependency dashboard, which the
         report gives no way to see.
+    prefix
+        The first word of every commit subject. Match it to the repository's Renovate
+        configuration: ``deps:`` for commitMessagePrefix, ``build(deps):`` for semantic commits.
     """
     root = directory.resolve()
     committing = commit_each and not dry_run
@@ -80,7 +84,7 @@ def apply_updates(
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
-    failed = _perform(root, groups, dry_run=dry_run, committing=committing)
+    failed = _perform(root, groups, prefix=prefix, dry_run=dry_run, committing=committing)
     _report_held(held)
     _report_outcome(groups, failed, dry_run=dry_run, committing=committing)
     if failed:
@@ -107,7 +111,14 @@ def _plan(
     return group(to_apply), held
 
 
-def _perform(root: Path, groups: list[Group], *, dry_run: bool, committing: bool) -> list[Group]:
+def _perform(
+    root: Path,
+    groups: list[Group],
+    *,
+    prefix: str,
+    dry_run: bool,
+    committing: bool,
+) -> list[Group]:
     """
     Apply each group in turn, committing as it goes unless told not to.
 
@@ -119,16 +130,29 @@ def _perform(root: Path, groups: list[Group], *, dry_run: bool, committing: bool
     failed: list[Group] = []
     for one in groups:
         try:
-            _perform_group(root, one, dry_run=dry_run, committing=committing)
+            _perform_group(
+                root,
+                one,
+                prefix=prefix,
+                dry_run=dry_run,
+                committing=committing,
+            )
         except RenovateApplyError as error:
             err.print(f"renovate-apply: {error}", style="red")
             failed.append(one)
     return failed
 
 
-def _perform_group(root: Path, one: Group, *, dry_run: bool, committing: bool) -> None:
+def _perform_group(
+    root: Path,
+    one: Group,
+    *,
+    prefix: str,
+    dry_run: bool,
+    committing: bool,
+) -> None:
     """Apply one group, and commit it when the run commits."""
-    paragraphs = message(one)
+    paragraphs = message(one, prefix)
     package_files = apply_group(root, one, write=not dry_run)
     out.print("would apply  " if dry_run else "applied  ", style="dim", end="")
     out.print(paragraphs[0], style="bold")

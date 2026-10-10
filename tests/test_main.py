@@ -109,6 +109,17 @@ def test_applies_a_major_when_it_is_asked_for(
     assert subjects(repo)[-1] == "deps: update ghcr.io/atuinsh/atuin to 19.0.0"
 
 
+def test_takes_the_commit_prefix_it_is_given(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A project on semantic commits gets build(deps): without editing anything here."""
+    given_report(monkeypatch, docker_update())
+    assert run_cli(str(repo), "--prefix", "build(deps):") == 0
+
+    assert subjects(repo)[-1].startswith("build(deps): update ")
+
+
 def test_stops_when_a_file_no_longer_holds_what_the_report_described(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
