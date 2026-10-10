@@ -38,12 +38,18 @@ dev = [
     "ty>=0.0.85",
     "zuban>=0.10.0",
 ]
+test = [
+    "pytest>=9.1.1",
+]
 
 [project.urls]
 Repository = "https://github.com/jbsilva/renovate-apply"
 Issues = "https://github.com/jbsilva/renovate-apply/issues"
 
 [tool.uv]
+# `uv run pytest` is the documented way to run the suite, and uv syncs to the default groups before
+# it runs anything, so test has to be one of them or pytest is uninstalled on the way in.
+default-groups = ["dev", "test"]
 exclude-newer = "1 day"
 
 [tool.uv.exclude-newer-package]
@@ -85,6 +91,10 @@ executor = { with = ["prek"] }
 [tool.poe.tasks.check]
 help = "Run all the checks to do before a commit"
 sequence = ["lint", "format", "typecheck", "hooks"]
+
+[tool.poe.tasks.test]
+help = "Run the test suite (extra arguments go to pytest)"
+cmd = "pytest"
 
 [tool.ruff]
 line-length = 100
@@ -161,3 +171,15 @@ exclude_dirs = [".git", ".venv", "__pycache__", "tests"]
 
 [tool.bandit.assert_used]
 skips = ['tests/test_*.py']
+
+[tool.pytest.ini_options]
+addopts = [
+    "-ra",
+    "--durations=10",
+    "--import-mode=importlib",
+    "--tb=short",
+    "--verbose",
+]
+# Warnings are errors: a new DeprecationWarning from a dependency bump (the exact thing this tool
+# ships) must fail the suite instead of scrolling past.
+filterwarnings = ["error"]
