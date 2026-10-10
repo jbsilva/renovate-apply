@@ -54,6 +54,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     major: bool = False,
     skip: list[str] | None = None,
     prefix: str = DEFAULT_PREFIX,
+    renovate_version: str | None = None,
 ) -> None:
     """
     Apply the updates Renovate finds, one commit per group.
@@ -76,11 +77,20 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     prefix
         The first word of every commit subject. Match it to the repository's Renovate
         configuration: ``deps:`` for commitMessagePrefix, ``build(deps):`` for semantic commits.
+    renovate_version
+        The npm version of Renovate to run. Without this, a ``renovate`` already on PATH is used,
+        and otherwise npx fetches the latest.
     """
     root = directory.resolve()
     committing = commit_each and not dry_run
     try:
-        groups, held = _plan(root, major=major, committing=committing, skip=skip or [])
+        groups, held = _plan(
+            root,
+            major=major,
+            committing=committing,
+            skip=skip or [],
+            renovate_version=renovate_version,
+        )
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
@@ -97,6 +107,7 @@ def _plan(
     major: bool,
     committing: bool,
     skip: list[str],
+    renovate_version: str | None,
 ) -> tuple[list[Group], list[Held]]:
     """Check the working copy, run the scan, and return what to do with what came back."""
     require_repository(root)
@@ -104,7 +115,7 @@ def _plan(
         require_clean(root)
 
     err.print(f"renovate-apply: scanning {root} ...", style="dim")
-    report = scan(root)
+    report = scan(root, version=renovate_version)
     for problem in problems(report):
         err.print(f"renovate-apply: renovate reported: {problem}", style="yellow")
 
