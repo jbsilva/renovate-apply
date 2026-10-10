@@ -25,7 +25,7 @@ from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
 from renovate_apply.errors import LockError, NoSolutionError, RenovateApplyError
 from renovate_apply.files import apply_group, restore, snapshot, split_repeats
-from renovate_apply.git import commit, require_clean, require_repository
+from renovate_apply.git import commit, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
@@ -62,6 +62,7 @@ class Mode(Enum):
 
     DRY_RUN = "Nothing was written."
     WRITE = "Written, not committed. `git diff` to read it."
+    STAGE = "Staged, not committed. `git diff --cached` to read it."
     COMMIT = "Committed. Nothing is pushed."
 
 
@@ -72,6 +73,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     dry_run: bool = False,
     # Named --commit so cyclopts derives the negative as --no-commit, which is what is typed.
     commit_each: Annotated[bool, Parameter(name="--commit")] = True,
+    stage_each: Annotated[bool, Parameter(name="--stage")] = False,
     major: bool = False,
     lock: bool = True,
     skip: list[str] | None = None,
@@ -92,6 +94,9 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     commit_each
         Commit each group as it is applied. ``--no-commit`` writes the files and stops, for one
         review of everything at once.
+    stage_each
+        Stage each group as it is applied, and commit nothing. Implies ``--no-commit``, and leaves
+        the run's own edits in ``git diff --cached``, apart from anything else in the tree.
     major
         Include major updates, which are held back by default.
     lock
@@ -114,7 +119,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         with no token at all is rate limited on everything it looks up on GitHub.
     """
     root = directory.resolve()
-    mode = _mode(dry_run=dry_run, commit_each=commit_each)
+    mode = _mode(dry_run=dry_run, commit_each=commit_each, stage_each=stage_each)
     try:
         groups, held = _plan(
             root,
@@ -140,10 +145,12 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         raise SystemExit(1)
 
 
-def _mode(*, dry_run: bool, commit_each: bool) -> Mode:
-    """Turn the flags into one mode; the flag that does less wins."""
+def _mode(*, dry_run: bool, commit_each: bool, stage_each: bool) -> Mode:
+    """Turn the three flags into one mode; the flag that does less wins."""
     if dry_run:
         return Mode.DRY_RUN
+    if stage_each:
+        return Mode.STAGE
     return Mode.COMMIT if commit_each else Mode.WRITE
 
 
@@ -206,7 +213,7 @@ def _perform(
 
 
 def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: bool) -> None:
-    """Apply one group, then lock and commit it as *mode* says."""
+    """Apply one group, then lock, stage, or commit it as *mode* says."""
     paragraphs = message(one, prefix)
     originals = snapshot(root, one.package_files)
     package_files = apply_group(root, one, write=mode is not Mode.DRY_RUN)
@@ -219,7 +226,9 @@ def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: boo
         out.print(f"    {name}  {moved}")
     for refreshed in locks:
         out.print(f"    {refreshed}  refreshed", style="dim")
-    if mode is Mode.COMMIT:
+    if mode is Mode.STAGE:
+        stage(root, [*package_files, *locks])
+    elif mode is Mode.COMMIT:
         commit(root, [*package_files, *locks], paragraphs)
 
 

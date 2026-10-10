@@ -41,6 +41,18 @@ Write the files and stop. Default is to commit.
 For reviewing everything at once with `git diff` instead of reading one commit per group. The clean
 working copy check is skipped, because nothing is committed.
 
+### `--stage`
+
+Write the files and stage them, one group after the other, and commit nothing. Default off.
+
+For reviewing everything at once with `git diff --cached`. The index then holds the run's edits and
+the matching lock files, apart from anything else in your tree. `--stage` implies `--no-commit`, and
+`--dry-run` wins over it. The clean working copy check is skipped, because nothing is committed.
+
+!!! warning
+
+    If a file the run edits already holds a change of yours, staging it stages your change too.
+
 ### `--major`
 
 Include major updates. Default off.

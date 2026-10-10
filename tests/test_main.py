@@ -452,3 +452,30 @@ def test_a_lock_that_fails_for_another_reason_fails_the_group(
     assert "Failed to fetch" in capsys.readouterr().err
     assert (repo / "pyproject.toml").read_text(encoding="utf-8") == '[project]\nname = "x"\n'
     assert git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_stage_stages_each_group_and_commits_nothing(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """--stage is for one review of the run's own edits in the index, apart from anything else."""
+    with_manifest(repo)
+    monkeypatch.setattr(main_module, "refresh", relocks)
+    given_report(monkeypatch, manifest_update(), docker_update())
+    assert run_cli(str(repo), "--stage") == 0
+
+    staged = git(repo, "diff", "--cached", "--name-only").stdout.split()
+    assert staged == ["pyproject.toml", "stack/compose.yaml", "uv.lock"]
+    assert len(subjects(repo)) == 2
+    assert "Staged, not committed." in capsys.readouterr().out
+
+
+def test_dry_run_beats_stage(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The flag that does less wins, so nothing is written, let alone staged."""
+    before = (repo / "stack" / "compose.yaml").read_text(encoding="utf-8")
+    given_report(monkeypatch, docker_update())
+    assert run_cli(str(repo), "--stage", "--dry-run") == 0
+
+    assert (repo / "stack" / "compose.yaml").read_text(encoding="utf-8") == before
+    assert git(repo, "status", "--porcelain").stdout == ""

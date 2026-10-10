@@ -29,6 +29,7 @@ if you prefer `dry_run` to `dry-run`.
 | ------------------ | -------------- | --------- | -------------------- |
 | `dry-run`          | boolean        | `false`   | `--dry-run`          |
 | `commit`           | boolean        | `true`    | `--no-commit`        |
+| `stage`            | boolean        | `false`   | `--stage`            |
 | `major`            | boolean        | `false`   | `--major`            |
 | `lock`             | boolean        | `true`    | `--no-lock`          |
 | `skip`             | list of string | empty     | `--skip`             |

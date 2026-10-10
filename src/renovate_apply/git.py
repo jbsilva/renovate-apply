@@ -59,6 +59,14 @@ def require_clean(root: Path) -> None:
         raise WorkingCopyError(msg)
 
 
+def stage(root: Path, package_files: Sequence[str]) -> None:
+    """Add *package_files* to the index, and nothing else."""
+    staged = run(root, "add", "--", *package_files)
+    if staged.returncode != 0:
+        msg = f"git add failed: {staged.stderr.strip()}"
+        raise GitError(msg)
+
+
 def commit(root: Path, package_files: Sequence[str], paragraphs: Sequence[str]) -> None:
     """
     Stage *package_files* and commit them with *paragraphs* as the message.
@@ -66,11 +74,7 @@ def commit(root: Path, package_files: Sequence[str], paragraphs: Sequence[str]) 
     The hooks run. When one of them fails, or rewrites a file so the commit stops, this raises with
     what git and the hook said, and leaves the tree exactly as they left it.
     """
-    staged = run(root, "add", "--", *package_files)
-    if staged.returncode != 0:
-        msg = f"git add failed: {staged.stderr.strip()}"
-        raise GitError(msg)
-
+    stage(root, package_files)
     arguments = [*("-m", paragraph) for paragraph in paragraphs]
     committed = run(root, "commit", *arguments)
     if committed.returncode != 0:

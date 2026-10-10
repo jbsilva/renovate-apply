@@ -11,16 +11,17 @@ and makes one commit per group.
 rnv
 ```
 
-## The three modes
+## The modes
 
-| Command           | What you get                                                  |
-| ----------------- | ------------------------------------------------------------- |
-| `rnv --dry-run`   | A list of what would change. Nothing is written.              |
-| `rnv --no-commit` | The files are written. Nothing is committed. Read `git diff`. |
-| `rnv`             | The files are written and committed, one commit per group.    |
+| Command           | What you get                                                                      |
+| ----------------- | --------------------------------------------------------------------------------- |
+| `rnv --dry-run`   | A list of what would change. Nothing is written.                                  |
+| `rnv --no-commit` | The files are written. Nothing is committed. Read `git diff`.                     |
+| `rnv --stage`     | The files are written and staged. Nothing is committed. Read `git diff --cached`. |
+| `rnv`             | The files are written and committed, one commit per group.                        |
 
-All three compute every edit. A dry run is not a shallow check: if an edit cannot be placed, the dry
-run says so, in the same words a real run would.
+All of them compute every edit. A dry run is not a shallow check: if an edit cannot be placed, the
+dry run says so, in the same words a real run would.
 
 ## Reading the output
 
@@ -41,8 +42,8 @@ The bold line after `applied` is the commit subject. The lines under it are what
 become the commit body when a group holds more than one thing. Anything found but not applied is
 listed under **Held back**, with the reason.
 
-The last line tells you the state of the working copy: `Committed`, `Written, not committed`, or
-`Nothing was written`.
+The last line tells you the state of the working copy: `Committed`, `Staged, not committed`,
+`Written, not committed`, or `Nothing was written`.
 
 ## When a group cannot be applied
 

@@ -59,7 +59,7 @@ the new version or digest in it. That pair is Renovate's own auto-replace, hande
 - Holds every major back until you ask for it
 - Never skips your git hooks, and never commits anything it did not write
 - Never leaves a `pyproject.toml` that does not lock: such a group is undone and held back
-- `--dry-run` to read first, `--no-commit` to review everything at once
+- `--dry-run` to read first, `--no-commit` or `--stage` to review everything at once
 
 ## Requirements
 
@@ -93,6 +93,7 @@ $ renovate-apply --help
 | `rnv`                         | Scan, apply, one commit per group                         |
 | `rnv --dry-run`               | Say what would change and write nothing                   |
 | `rnv --no-commit`             | Write the files and stop, for one review of everything    |
+| `rnv --stage`                 | Write and stage the files, and commit nothing             |
 | `rnv --major`                 | Include the major updates, which are held back by default |
 | `rnv --skip python`           | Hold a dependency back by name, as a glob, repeatable     |
 | `rnv --prefix "build(deps):"` | Set the first word of every commit subject                |

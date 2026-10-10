@@ -52,6 +52,9 @@ git commit -m "<subject>" -m "<body>"
 `git commit` takes the index, not the working tree, which is why a run that commits wants a clean
 tree first. Untracked files cannot reach the commit and do not block the run.
 
+With `--stage`, the run does the `git add` for each group and stops there, so you can read
+everything with `git diff --cached` and commit it yourself.
+
 ## Hooks always run
 
 Your git hooks run on every commit. They are never skipped, and `--no-verify` is never passed.

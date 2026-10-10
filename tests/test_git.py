@@ -6,7 +6,7 @@ import pytest
 from helpers import git
 
 from renovate_apply.errors import GitError, WorkingCopyError
-from renovate_apply.git import commit, require_clean, require_repository
+from renovate_apply.git import commit, require_clean, require_repository, stage
 
 
 def test_require_repository_accepts_a_working_copy(repo: Path) -> None:
@@ -81,3 +81,13 @@ def test_commit_reports_a_file_git_cannot_stage(repo: Path) -> None:
     """A package file that is not there fails at staging, before anything is committed."""
     with pytest.raises(GitError, match="git add failed"):
         commit(repo, ["nothing/here.yaml"], ["deps: update nothing"])
+
+
+def test_stage_adds_only_the_files_it_was_given_and_commits_nothing(repo: Path) -> None:
+    """Staging is for a review before the commit, so the index holds the run's files alone."""
+    (repo / "stack" / "compose.yaml").write_text("image: new\n", encoding="utf-8")
+    (repo / ".pre-commit-config.yaml").write_text("not mine\n", encoding="utf-8")
+    stage(repo, ["stack/compose.yaml"])
+
+    assert git(repo, "diff", "--cached", "--name-only").stdout.split() == ["stack/compose.yaml"]
+    assert git(repo, "rev-list", "--count", "HEAD").stdout.strip() == "1"
