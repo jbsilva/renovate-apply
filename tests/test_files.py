@@ -1,0 +1,64 @@
+"""Writing the package files: every edit of a group, and nothing else about the file."""
+
+from pathlib import Path
+
+import pytest
+from helpers import docker_update
+
+from renovate_apply.errors import ReplaceError
+from renovate_apply.files import apply_group
+from renovate_apply.models import Group
+
+
+def test_apply_group_makes_every_edit_of_one_file(tmp_path: Path) -> None:
+    """Two images in one compose file are two edits and one write."""
+    path = tmp_path / "stack" / "compose.yaml"
+    path.parent.mkdir()
+    path.write_text(
+        "a: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa\nb: postgres:18-alpine@sha256:bbbb\n",
+        encoding="utf-8",
+    )
+    group = Group(
+        "renovate/stack-images",
+        (
+            docker_update(),
+            docker_update(
+                dep_name="postgres",
+                current_value="18-alpine",
+                new_value="18.1-alpine",
+                current_digest="sha256:bbbb",
+                new_digest="sha256:dddd",
+                replace_string="postgres:18-alpine@sha256:bbbb",
+            ),
+        ),
+    )
+    assert apply_group(tmp_path, group) == ("stack/compose.yaml",)
+    assert path.read_text(encoding="utf-8") == (
+        "a: ghcr.io/atuinsh/atuin:18.22.0@sha256:cccc\nb: postgres:18.1-alpine@sha256:dddd\n"
+    )
+
+
+def test_apply_group_writes_nothing_when_asked_not_to(tmp_path: Path) -> None:
+    """A dry run computes every edit and leaves the file byte for byte as it was."""
+    path = tmp_path / "stack" / "compose.yaml"
+    path.parent.mkdir()
+    original = "a: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa\n"
+    path.write_text(original, encoding="utf-8")
+    group = Group("renovate/stack-images", (docker_update(),))
+    assert apply_group(tmp_path, group, write=False) == ("stack/compose.yaml",)
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_apply_group_keeps_windows_line_endings(tmp_path: Path) -> None:
+    """A CRLF file stays CRLF, so the diff is the one line that moved."""
+    path = tmp_path / "stack" / "compose.yaml"
+    path.parent.mkdir()
+    path.write_bytes(b"a: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa\r\nb: keep\r\n")
+    apply_group(tmp_path, Group("renovate/stack-images", (docker_update(),)))
+    assert path.read_bytes() == b"a: ghcr.io/atuinsh/atuin:18.22.0@sha256:cccc\r\nb: keep\r\n"
+
+
+def test_apply_group_reports_a_file_it_cannot_read(tmp_path: Path) -> None:
+    """A package file the report names and the disk does not have is a fault, not a skip."""
+    with pytest.raises(ReplaceError, match="cannot read"):
+        apply_group(tmp_path, Group("renovate/stack-images", (docker_update(),)))

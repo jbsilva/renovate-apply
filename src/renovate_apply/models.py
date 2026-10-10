@@ -87,6 +87,11 @@ class Group:
     updates: tuple[Update, ...]
 
     @property
+    def package_files(self) -> tuple[str, ...]:
+        """Return the files this group touches, each once, in the order Renovate reported them."""
+        return tuple(dict.fromkeys(update.package_file for update in self.updates))
+
+    @property
     def managers(self) -> frozenset[str]:
         """Return the set of managers that contributed to this group."""
         return frozenset(update.manager for update in self.updates)
