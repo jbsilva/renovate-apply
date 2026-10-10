@@ -27,7 +27,10 @@ classifiers = [
     "Topic :: Software Development :: Version Control :: Git",
     "Topic :: System :: Software Distribution",
 ]
-dependencies = []
+dependencies = [
+    "cyclopts>=5.2.0",
+    "rich>=15.0.0",
+]
 
 [dependency-groups]
 dev = [
@@ -49,6 +52,9 @@ test = [
 Repository = "https://github.com/jbsilva/renovate-apply"
 Issues = "https://github.com/jbsilva/renovate-apply/issues"
 
+[project.scripts]
+renovate-apply = "renovate_apply.main:main"
+
 [tool.uv]
 # `uv run pytest` is the documented way to run the suite, and uv syncs to the default groups before
 # it runs anything, so test has to be one of them or pytest is uninstalled on the way in.
@@ -56,6 +62,7 @@ default-groups = ["dev", "test"]
 exclude-newer = "1 day"
 
 [tool.uv.exclude-newer-package]
+cyclopts = "6 hours"
 ruff = "6 hours"
 zuban = "6 hours"
 

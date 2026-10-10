@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from renovate_apply.main import main
 from renovate_apply.models import Update
 
 
@@ -32,6 +33,20 @@ repos:
     hooks:
       - id: typos
 """
+
+
+def run_cli(*args: str) -> int:
+    """
+    Run the command the way the console script does, and return the exit code.
+
+    cyclopts ends every run with ``sys.exit``, success included, so a test that called ``main``
+    directly would have to catch SystemExit around each one.
+    """
+    try:
+        main(list(args))
+    except SystemExit as stopped:
+        return int(stopped.code or 0)
+    return 0  # pragma: no cover - cyclopts always exits, this is here for the type checker
 
 
 def git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
