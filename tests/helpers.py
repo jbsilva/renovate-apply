@@ -114,6 +114,8 @@ def report_for(*updates: Update) -> dict[str, Any]:
                     "newValue": update.new_value,
                     "newDigest": update.new_digest,
                     "newName": update.new_name,
+                    "isVulnerabilityAlert": update.is_security,
+                    "pendingChecks": update.pending,
                 },
             ],
         }

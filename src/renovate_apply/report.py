@@ -15,6 +15,7 @@ from renovate_apply.models import Group, Held, Update
 # The local platform always names the one repository it reads "local".
 LOCAL_REPOSITORY = "local"
 
+HELD_PENDING = "waiting out minimumReleaseAge"
 HELD_MAJOR = "major, use --major to include it"
 
 
@@ -56,6 +57,9 @@ def group(updates: Sequence[Update]) -> list[Group]:
 
 def _hold_reason(update: Update, *, with_major: bool) -> str | None:
     """Return why this update is not applied, or None when it is."""
+    # A security fix bypasses Renovate's own holds, so it bypasses this one too.
+    if update.pending and not update.is_security:
+        return HELD_PENDING
     if update.update_type == "major" and not with_major:
         return HELD_MAJOR
     return None
@@ -108,6 +112,8 @@ def _iter_dep_updates(
             replace_string=_text(dep.get("replaceString")),
             replace_template=_text(dep.get("autoReplaceStringTemplate")),
             new_name=_text(raw.get("newName")),
+            is_security=_flag(raw.get("isVulnerabilityAlert")),
+            pending=_flag(raw.get("pendingChecks")),
         )
 
 
@@ -138,3 +144,8 @@ def _sequence(value: object, what: str) -> Sequence[object]:
 def _text(value: object) -> str | None:
     """Return a string field, or None when it is absent or null."""
     return value if isinstance(value, str) else None
+
+
+def _flag(value: object) -> bool:
+    """Return a boolean field, treating anything absent or odd as false."""
+    return value is True

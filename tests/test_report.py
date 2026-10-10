@@ -6,6 +6,7 @@ from helpers import docker_update, hook_update, report_for
 from renovate_apply.errors import ReportError
 from renovate_apply.report import (
     HELD_MAJOR,
+    HELD_PENDING,
     group,
     read_updates,
     split,
@@ -46,6 +47,20 @@ def test_split_holds_a_major_until_it_is_asked_for() -> None:
     wanted, none_held = split([major], with_major=True)
     assert wanted == [major]
     assert none_held == []
+
+
+def test_split_holds_an_update_renovate_would_not_open_yet() -> None:
+    """PendingChecks means Renovate is waiting out minimumReleaseAge; so does this."""
+    _, held = split([docker_update(pending=True)], with_major=False)
+    assert held[0].reason == HELD_PENDING
+
+
+def test_split_applies_a_security_fix_even_while_it_is_pending() -> None:
+    """A vulnerability alert bypasses Renovate's own hold, so it bypasses this one."""
+    update = docker_update(pending=True, is_security=True)
+    to_apply, held = split([update], with_major=False)
+    assert to_apply == [update]
+    assert held == []
 
 
 def test_group_gathers_by_branch_in_the_order_renovate_reported() -> None:
