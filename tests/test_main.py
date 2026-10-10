@@ -134,6 +134,58 @@ def test_takes_the_commit_prefix_it_is_given(
     assert subjects(repo)[-1].startswith("build(deps): update ")
 
 
+def write_prefix(directory: Path, prefix: str) -> None:
+    """Give a directory a pyproject.toml that sets the commit prefix and nothing else."""
+    (directory / "pyproject.toml").write_text(
+        f'[tool.renovate-apply]\nprefix = "{prefix}"\n',
+        encoding="utf-8",
+    )
+
+
+def test_defaults_come_from_the_repository_being_updated(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    The settings belong to the repository named on the command line, not to the shell's directory.
+
+    cyclopts resolves a Toml config against the working directory, so left alone it would write the
+    caller's own prefix into another repository's commits.
+    """
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    write_prefix(elsewhere, "caller:")
+    write_prefix(repo, "target:")
+    monkeypatch.chdir(elsewhere)
+    given_report(monkeypatch, docker_update())
+    assert run_cli(str(repo)) == 0
+
+    assert subjects(repo)[-1] == "target: update ghcr.io/atuinsh/atuin to 18.22.0"
+
+
+def test_a_flag_beats_the_file(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The file holds defaults, so what is typed for one run wins over it."""
+    write_prefix(repo, "target:")
+    given_report(monkeypatch, docker_update())
+    assert run_cli(str(repo), "--prefix", "typed:") == 0
+
+    assert subjects(repo)[-1].startswith("typed: ")
+
+
+def test_a_repository_without_a_manifest_uses_the_built_in_defaults(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An infrastructure repository has no pyproject.toml, and no parent of it speaks for it."""
+    write_prefix(tmp_path, "parent:")
+    given_report(monkeypatch, docker_update())
+    assert run_cli(str(repo)) == 0
+
+    assert subjects(repo)[-1].startswith("deps: ")
+
+
 def test_stops_when_a_file_no_longer_holds_what_the_report_described(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,

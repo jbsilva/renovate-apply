@@ -25,7 +25,8 @@ First release.
   dependency renames are held too, and everything held is listed with its reason.
 - `--prefix` sets the first word of every commit subject, to match `commitMessagePrefix` or the
   semantic-commit type the repository's Renovate configuration uses.
-- Any option can be set per repository under `[tool.renovate-apply]` in its `pyproject.toml`.
+- Any option can be set per repository under `[tool.renovate-apply]` in the `pyproject.toml` of the
+  repository being updated, whichever directory the run was started from.
 - `uv lock` runs after an edit to a `pyproject.toml` that has a `uv.lock` beside it, and both land
   in the same commit, so a repository whose CI installs with `--locked` stays installable.
   `--no-lock` turns it off.

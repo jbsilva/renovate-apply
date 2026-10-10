@@ -13,6 +13,8 @@ branch. Each module owns one slice:
 
 - `main.py` - the cyclopts entry point and the orchestration. Keep it thin: it wires the modules
   together and turns domain errors into exit codes. New flags go on `apply_updates`.
+- `config.py` - the cyclopts configuration source, which reads `[tool.renovate-apply]` out of the
+  repository being updated rather than out of the directory the command was started from.
 - `scan.py` - runs Renovate (`--platform=local` plus `RENOVATE_REPORT_TYPE=file`) and hands back the
   parsed report. Nothing else in the package knows how Renovate is invoked.
 - `report.py` - flattens the report's manager/file/dependency/update nesting into `Update` objects,

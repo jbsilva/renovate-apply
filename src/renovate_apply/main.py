@@ -18,13 +18,10 @@ from pathlib import Path
 from typing import Annotated
 
 from cyclopts import App, Parameter
-
-# Not ``from cyclopts import config``: the stub re-exports its own submodules, and pycroscope's
-# typeshed reader recurses forever on that self-reference.
-from cyclopts.config import Toml
 from rich.console import Console
 
 from renovate_apply import __version__
+from renovate_apply.config import repository_defaults
 from renovate_apply.errors import RenovateApplyError
 from renovate_apply.files import apply_group, split_repeats
 from renovate_apply.git import commit, require_clean, require_repository
@@ -42,12 +39,7 @@ app = App(
     help=__doc__,
     # Per-repository defaults live under [tool.renovate-apply] in the pyproject.toml of the
     # repository being updated, so a project that writes "build(deps):" never has to say so twice.
-    config=Toml(
-        "pyproject.toml",
-        root_keys=("tool", "renovate-apply"),
-        use_commands_as_keys=False,
-        search_parents=True,
-    ),
+    config=repository_defaults(),
 )
 
 # markup off because an image tag or a version can hold square brackets, and rich would read those

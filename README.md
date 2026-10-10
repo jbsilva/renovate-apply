@@ -125,6 +125,10 @@ prefix = "build(deps):"
 skip = ["python"]
 ```
 
+The file is read from the directory being updated, so `rnv ~/code/other-repo` takes that
+repository's settings and not those of wherever you happen to be standing. Only that directory is
+read, never a parent of it, and a flag typed for one run wins over the file.
+
 A repository without a `pyproject.toml` (an infrastructure repository, say) passes the flags
 instead.
 
