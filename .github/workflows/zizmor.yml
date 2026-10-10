@@ -42,7 +42,7 @@ jobs:
       # stale-action-refs). Without it those quietly do not run.
       - name: Run zizmor
         run: >-
-          uv run --only-group dev --locked --no-build
+          uv run --only-group dev --locked --no-build --no-binary-package pyyaml
           zizmor --format=sarif . > results.sarif
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,6 +59,6 @@ jobs:
       - name: Fail on findings
         # --format=sarif always exits 0, so the audit runs a second time (sub-second) to gate the
         # PR, after the results are safely in the Security tab.
-        run: uv run --only-group dev --locked --no-build zizmor .
+        run: uv run --only-group dev --locked --no-build --no-binary-package pyyaml zizmor .
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

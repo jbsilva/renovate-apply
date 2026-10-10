@@ -47,7 +47,7 @@ jobs:
 
       - name: Build site
         # --only-group docs: the build needs zensical only, not the package's own dependencies.
-        run: uv run --only-group docs --locked --no-build zensical build --clean
+        run: uv run --only-group docs --locked --no-build --no-binary-package pyyaml zensical build --clean
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

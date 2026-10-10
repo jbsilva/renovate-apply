@@ -40,11 +40,12 @@ jobs:
       - name: Install dependencies
         # --locked fails on a drifted uv.lock instead of silently re-resolving it.
         # --no-build keeps third-party sdist build code from running during install;
-        # --no-binary-package exempts renovate-apply itself, which only exists as source.
-        run: uv sync --locked --no-build --no-binary-package renovate-apply --group test
+        # --no-binary-package exempts renovate-apply itself, which only exists as source, and pyyaml,
+        # which has no Python 3.15 wheel yet.
+        run: uv sync --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml --group test
 
       - name: Run tests
-        run: uv run --locked --no-build --no-binary-package renovate-apply pytest
+        run: uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml pytest
 
       - name: Upload coverage to Codecov
         # Upload even when a test fails: pytest-cov still writes the report at session end.
@@ -82,16 +83,16 @@ jobs:
           python-version-file: "pyproject.toml"
 
       - name: Install dev dependencies
-        run: uv sync --locked --no-build --no-binary-package renovate-apply --group dev --group test
+        run: uv sync --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml --group dev --group test
 
       - name: ruff check
-        run: uv run --locked --no-build --no-binary-package renovate-apply ruff check .
+        run: uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml ruff check .
 
       - name: ruff format
-        run: uv run --locked --no-build --no-binary-package renovate-apply ruff format --check .
+        run: uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml ruff format --check .
 
       - name: ty type check
-        run: uv run --locked --no-build --no-binary-package renovate-apply ty check
+        run: uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml ty check
 
   sonarcloud:
     # Reuse the coverage report from unit-tests instead of running the suite twice.
@@ -118,7 +119,7 @@ jobs:
           python-version-file: "pyproject.toml"
 
       - name: Install dev dependencies
-        run: uv sync --locked --no-build --no-binary-package renovate-apply --group dev
+        run: uv sync --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml --group dev
 
       - name: Create reports directory
         run: mkdir -p reports
@@ -128,7 +129,7 @@ jobs:
       # security.
       - name: Generate ruff report
         run: |
-          uv run --locked --no-build --no-binary-package renovate-apply ruff check \
+          uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml ruff check \
             --output-format=json \
             --output-file=reports/ruff_report.json \
             --exit-zero \
@@ -136,7 +137,7 @@ jobs:
 
       - name: Generate bandit report
         run: |
-          uv run --locked --no-build --no-binary-package renovate-apply bandit \
+          uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml bandit \
             --configfile pyproject.toml \
             --recursive \
             --format json \

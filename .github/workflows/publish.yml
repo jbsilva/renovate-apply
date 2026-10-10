@@ -43,8 +43,8 @@ jobs:
         # A tag push or a manually-dispatched release never triggers tests.yml, so without this
         # gate a broken commit could be built and published without a single test running on it.
         run: |
-          uv sync --locked --no-build --no-binary-package renovate-apply --group test
-          uv run --locked --no-build --no-binary-package renovate-apply pytest
+          uv sync --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml --group test
+          uv run --locked --no-build --no-binary-package renovate-apply --no-binary-package pyyaml pytest
 
       - name: Build package
         run: uv build
