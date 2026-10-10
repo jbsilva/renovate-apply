@@ -39,3 +39,8 @@ hooks = [
   { id = "ruff-check", args = ["--fix"] },
   { id = "ruff-format" },
 ]
+
+[[repos]]
+repo = "https://github.com/asottile/pyupgrade"
+rev = "v3.22.0"
+hooks = [{ id = "pyupgrade", args = ["--py315-plus"] }]
