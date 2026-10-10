@@ -53,6 +53,7 @@ test = [
 ]
 
 [project.urls]
+Documentation = "https://jbsilva.github.io/renovate-apply/"
 Repository = "https://github.com/jbsilva/renovate-apply"
 Issues = "https://github.com/jbsilva/renovate-apply/issues"
 
