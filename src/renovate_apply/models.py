@@ -57,6 +57,14 @@ class Update:
     pending: bool = False
     """Renovate's ``pendingChecks``: it found this one but would not open a pull request yet."""
 
+    is_lockfile_update: bool = False
+    """
+    Renovate's ``isLockfileUpdate``: the range in the manifest already allows the new version.
+
+    Nothing in the package file changes, so there is no edit to make. Only the lock file beside it
+    moves, and that takes the package manager, not a string replacement.
+    """
+
     @property
     def current(self) -> str:
         """Return what the file says now, for display."""

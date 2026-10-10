@@ -5,6 +5,7 @@ from helpers import docker_update, hook_update, report_for
 
 from renovate_apply.errors import ReportError
 from renovate_apply.report import (
+    HELD_LOCKFILE,
     HELD_MAJOR,
     HELD_PENDING,
     HELD_RENAME,
@@ -68,6 +69,37 @@ def test_split_holds_a_rename() -> None:
     """Renaming a dependency is a different edit, and this tool does not write it."""
     _, held = split([docker_update(new_name="ghcr.io/other/atuin")], with_major=False)
     assert held[0].reason == HELD_RENAME
+
+
+def test_split_holds_a_lock_file_update() -> None:
+    """
+    An npm range that already allows the new version moves the lock file, not the manifest.
+
+    Renovate still reports it, with the same value on both sides. There is no edit to make, so it is
+    held rather than sent to the replacement engine, which would refuse it as a write for nothing
+    and take every other group in the run down with it.
+    """
+    update = docker_update(
+        manager="npm",
+        package_file="docker/package.json",
+        dep_name="@scope/cli",
+        current_value="^2.49.0",
+        new_value="^2.49.0",
+        current_digest=None,
+        new_digest="sha512-abcd",
+        replace_string=None,
+        replace_template=None,
+        is_lockfile_update=True,
+    )
+    to_apply, held = split([update], with_major=False)
+    assert to_apply == []
+    assert held[0].reason == HELD_LOCKFILE
+
+
+def test_read_updates_carries_the_lock_file_flag() -> None:
+    """The flag comes off the update, not the dependency, so it is read where Renovate writes it."""
+    update = docker_update(is_lockfile_update=True)
+    assert read_updates(report_for(update))[0].is_lockfile_update is True
 
 
 def test_group_gathers_by_branch_in_the_order_renovate_reported() -> None:

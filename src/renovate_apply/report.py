@@ -18,6 +18,7 @@ LOCAL_REPOSITORY = "local"
 HELD_PENDING = "waiting out minimumReleaseAge"
 HELD_MAJOR = "major, use --major to include it"
 HELD_RENAME = "a rename, which this tool does not write"
+HELD_LOCKFILE = "a lock file update, the manifest does not change"
 
 
 def read_updates(report: Mapping[str, object]) -> list[Update]:
@@ -60,6 +61,8 @@ def _hold_reason(update: Update, *, with_major: bool) -> str | None:
     """Return why this update is not applied, or None when it is."""
     if update.new_name is not None and update.new_name != update.dep_name:
         return HELD_RENAME
+    if update.is_lockfile_update:
+        return HELD_LOCKFILE
     # A security fix bypasses Renovate's own holds, so it bypasses this one too.
     if update.pending and not update.is_security:
         return HELD_PENDING
@@ -117,6 +120,7 @@ def _iter_dep_updates(
             new_name=_text(raw.get("newName")),
             is_security=_flag(raw.get("isVulnerabilityAlert")),
             pending=_flag(raw.get("pendingChecks")),
+            is_lockfile_update=_flag(raw.get("isLockfileUpdate")),
         )
 
 
