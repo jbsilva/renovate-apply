@@ -23,6 +23,11 @@ from renovate_apply.errors import ScanError
 REPORT_ENV_TYPE = "RENOVATE_REPORT_TYPE"
 REPORT_ENV_PATH = "RENOVATE_REPORT_PATH"
 
+# Renovate reads LOG_LEVEL and takes bunyan's names, so a shell that exports the longer "warning"
+# for everything else makes it exit 60 with "Invalid log level" and nothing about the repository.
+# Setting it here means the caller's shell cannot break the run.
+LOG_LEVEL = "warn"
+
 
 def renovate_command(version: str | None) -> list[str]:
     """
@@ -43,7 +48,7 @@ def renovate_command(version: str | None) -> list[str]:
 def scan(root: Path, *, version: str | None = None) -> dict[str, object]:
     """Run Renovate over *root* and return the parsed report."""
     argv = [*renovate_command(version), "--platform=local"]
-    env = {**os.environ, REPORT_ENV_TYPE: "file"}
+    env = {**os.environ, REPORT_ENV_TYPE: "file", "LOG_LEVEL": LOG_LEVEL}
     with tempfile.TemporaryDirectory() as directory:
         report = Path(directory) / "renovate-report.json"
         env[REPORT_ENV_PATH] = str(report)
