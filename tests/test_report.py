@@ -14,6 +14,7 @@ from renovate_apply.report import (
     problems,
     read_updates,
     split,
+    split_collisions,
 )
 
 
@@ -159,3 +160,25 @@ def test_split_applies_a_dependency_no_pattern_matches() -> None:
     to_apply, held = split([update], with_major=False, skip=["python", "postgres"])
     assert to_apply == [update]
     assert held == []
+
+
+def test_split_collisions_keeps_the_first_of_two_updates_to_one_use() -> None:
+    """Renovate keeps the first update of a branch and drops a later one to the same text."""
+    minor = docker_update()
+    digest = docker_update(update_type="digest", new_value="v18.13.3", new_digest="sha256:dddd")
+    kept, collisions = split_collisions([minor, hook_update(), digest])
+    assert kept == [minor, hook_update()]
+    assert collisions == [(digest, minor)]
+
+
+def test_split_collisions_keeps_two_uses_that_reach_the_same_value() -> None:
+    """A dependency used twice is reported twice with one new value, and both uses are edited."""
+    first = docker_update()
+    assert split_collisions([first, first]) == ([first, first], [])
+
+
+def test_split_collisions_keeps_updates_of_two_branches() -> None:
+    """Each branch is its own pull request, so two of them can update the same text."""
+    minor = docker_update()
+    digest = docker_update(new_value="v18.13.3", branch_name="renovate/atuin-digest")
+    assert split_collisions([minor, digest]) == ([minor, digest], [])

@@ -92,6 +92,19 @@ Held back:
 If the two updates write different text, both are kept. The second one then fails, because the first
 one changed the line.
 
+## A new version and a new digest in one branch
+
+A dependency pinned to a digest can have two updates on the same branch: a new version, and a new
+digest of the version it has now. Both rewrite the same text, so only one of them can be applied.
+
+Renovate keeps the first update of the branch and drops the other ("Ignoring upgrade collision").
+This tool does the same, and lists the dropped one:
+
+```console
+Held back:
+  docker -> 29.8.2-cli (renovate/stack-images updates the same text to 29.9.0-cli)
+```
+
 ## Anything named in `--skip`
 
 Your answer to the same blind spot as majors, for updates that are not majors:

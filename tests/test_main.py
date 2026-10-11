@@ -336,6 +336,21 @@ def test_one_line_two_managers_found_is_one_commit(
     assert f"wrangler -> 4.148.0 ({held})" in capsys.readouterr().out
 
 
+def test_a_version_and_a_digest_of_one_image_in_one_branch_is_the_version(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Made second, the digest would find its text already rewritten and fail the group."""
+    digest = docker_update(update_type="digest", new_value="v18.13.3", new_digest="sha256:dddd")
+    given_report(monkeypatch, docker_update(), digest)
+    assert run_cli(str(repo)) == 0
+
+    assert subjects(repo)[1:] == ["deps: update ghcr.io/atuinsh/atuin to 18.22.0"]
+    held = "renovate/stack-images updates the same text to 18.22.0"
+    assert f"ghcr.io/atuinsh/atuin -> v18.13.3 ({held})" in capsys.readouterr().out
+
+
 def with_manifest(repo: Path) -> None:
     """Commit a pyproject.toml with a uv.lock beside it, for the lock file tests."""
     (repo / "pyproject.toml").write_text('[project]\nname = "x"\n', encoding="utf-8")

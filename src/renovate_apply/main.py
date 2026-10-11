@@ -32,10 +32,12 @@ from renovate_apply.models import Held
 from renovate_apply.report import (
     HELD_NO_SOLUTION,
     group,
+    held_collision,
     held_repeat,
     problems,
     read_updates,
     split,
+    split_collisions,
 )
 from renovate_apply.scan import scan
 lazy from renovate_apply.models import Group
@@ -173,7 +175,9 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     for problem in problems(report):
         err.print(f"renovate-apply: renovate reported: {problem}", style="yellow")
 
-    to_apply, held = split(read_updates(report), with_major=major, skip=skip)
+    updates, collisions = split_collisions(read_updates(report))
+    to_apply, held = split(updates, with_major=major, skip=skip)
+    held += [Held(update, held_collision(first)) for update, first in collisions]
     to_apply, repeats = split_repeats(root, to_apply)
     held += [Held(update, held_repeat(first)) for update, first in repeats]
     return group(to_apply), held

@@ -30,6 +30,11 @@ def held_repeat(first: Update) -> str:
     return f"the same edit as the {first.manager} update, in {first.branch_name}"
 
 
+def held_collision(first: Update) -> str:
+    """Return why a collision with *first* is held: Renovate's branch carries *first* instead."""
+    return f"{first.branch_name} updates the same text to {first.new}"
+
+
 def problems(report: Mapping[str, object]) -> list[str]:
     """Return what Renovate complained about, both globally and for the repository."""
     found: list[str] = []
@@ -72,6 +77,31 @@ def split(
         else:
             held.append(Held(update, reason))
     return to_apply, held
+
+
+def split_collisions(
+    updates: Sequence[Update],
+) -> tuple[list[Update], list[tuple[Update, Update]]]:
+    """
+    Split off each update that a branch cannot carry, because an earlier one rewrites its text.
+
+    One dependency can have two updates in one branch, a new version and a new digest of the old
+    one. Made one after the other, the second finds its text gone. Renovate keeps the first and
+    drops the rest ("Ignoring upgrade collision"), before any hold, and so does this.
+
+    Returns the updates to keep, and each collision paired with the update it collides with.
+    """
+    kept: list[Update] = []
+    collisions: list[tuple[Update, Update]] = []
+    seen: dict[tuple[str, str, str, str | None], Update] = {}
+    for update in updates:
+        key = (update.branch_name, update.package_file, update.dep_name, update.current_value)
+        first = seen.setdefault(key, update)
+        if first.new_value == update.new_value:
+            kept.append(update)
+        else:
+            collisions.append((update, first))
+    return kept, collisions
 
 
 def group(updates: Sequence[Update]) -> list[Group]:
