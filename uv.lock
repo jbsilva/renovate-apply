@@ -397,7 +397,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd77
 
 [[package]]
 name = "renovate-apply"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 default-groups = ["dev", "test"]
 dependencies = [

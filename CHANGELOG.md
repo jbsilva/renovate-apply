@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-11
+
+### Fixed
+
+- A dependency with a new version and a new digest of its current version on the same branch no
+  longer fails its group. As Renovate does, the first update is applied and the other is held.
+
 ## [0.1.0] - 2026-10-03
 
 First release.
@@ -36,4 +43,5 @@ First release.
 - Git hooks always run. A hook that refuses a commit stops the run and its output is reported.
 
 [0.1.0]: https://github.com/jbsilva/renovate-apply/releases/tag/v0.1.0
-[unreleased]: https://github.com/jbsilva/renovate-apply/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/jbsilva/renovate-apply/releases/tag/v0.1.1
+[unreleased]: https://github.com/jbsilva/renovate-apply/compare/v0.1.1...HEAD
