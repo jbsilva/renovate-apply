@@ -53,12 +53,10 @@ These are in `[tool.pytest.ini_options]`:
 Tests read as sentences and the docstring says why the behavior matters, not what the code does:
 
 ```python
-def test_split_applies_a_security_fix_even_while_it_is_pending() -> None:
-    """A vulnerability alert bypasses Renovate's own hold, so it bypasses this one."""
-    update = docker_update(pending=True, is_security=True)
-    to_apply, held = split([update], with_major=False)
-    assert to_apply == [update]
-    assert held == []
+def test_split_holds_a_rename() -> None:
+    """Renaming a dependency is a different edit, and this tool does not write it."""
+    _, held = split([docker_update(new_name="ghcr.io/other/atuin")], with_major=False)
+    assert held[0].reason == HELD_RENAME
 ```
 
 Build updates with `docker_update()` or `hook_update()` from `helpers.py` and override the fields

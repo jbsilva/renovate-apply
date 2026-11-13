@@ -54,9 +54,6 @@ class Update:
     new_name: str | None = None
     """Set only when Renovate wants to replace the dependency with a different one."""
 
-    is_security: bool = False
-    """Renovate's ``isVulnerabilityAlert``: this one bypasses every hold it has."""
-
     pending: bool = False
     """Renovate's ``pendingChecks``: it found this one but would not open a pull request yet."""
 

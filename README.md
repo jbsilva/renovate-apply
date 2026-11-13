@@ -147,8 +147,7 @@ reason:
 - **Majors**, unless `--major`. Renovate can be configured to send some majors to the dependency
   dashboard to be approved by hand. The report does not say which ones carry that flag, so holding
   every major is the only reading that cannot contradict your configuration.
-- **Updates Renovate would not open yet**, the ones still waiting out `minimumReleaseAge`. A
-  security fix bypasses that hold in Renovate, and bypasses it here too.
+- **Updates Renovate would not open yet**, the ones still waiting out `minimumReleaseAge`.
 - **Renames**, where Renovate wants to replace a dependency with a different one. That edit is not a
   version bump, and this tool does not write it.
 - **Lock file updates**, where the range in the manifest already allows the new version, so only the

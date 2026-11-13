@@ -98,6 +98,12 @@ All notable changes to this project are documented here. The format is based on
   that flag on a reported update, so the rule never ran. Renovate does not make a security fix wait
   for `minimumReleaseAge`, so such a fix is not pending in the report.
 
+### Removed
+
+- The rule that applied an `isVulnerabilityAlert` update while it was pending. Renovate does not put
+  that flag on a reported update, so the rule never ran. Renovate does not make a security fix wait
+  for `minimumReleaseAge`, so such a fix is not pending in the report.
+
 ## [0.1.1] - 2026-10-11
 
 ### Fixed

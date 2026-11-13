@@ -284,8 +284,7 @@ def _hold_reason(
     held_lock = _lock_reason(update, lock=lock, tracked=tracked)
     if held_lock is not None:
         return held_lock
-    # A security fix bypasses Renovate's own holds, so it bypasses this one too.
-    if update.pending and not update.is_security:
+    if update.pending:
         return HELD_PENDING
     if update.update_type == "major" and not with_major:
         return HELD_MAJOR
@@ -397,7 +396,6 @@ def _iter_dep_updates(where: _File, dep: Mapping[str, object], dep_index: int) -
             replace_string=_text(dep.get("replaceString")),
             replace_template=_text(dep.get("autoReplaceStringTemplate")) or where.template,
             new_name=_text(raw.get("newName")),
-            is_security=_flag(raw.get("isVulnerabilityAlert")),
             pending=_flag(raw.get("pendingChecks")),
             is_lockfile_update=_flag(raw.get("isLockfileUpdate")),
             new_version=_text(raw.get("newVersion")),

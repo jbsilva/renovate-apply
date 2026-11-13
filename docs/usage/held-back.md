@@ -33,8 +33,8 @@ rnv --major
 An update still waiting out `minimumReleaseAge` carries `pendingChecks` in the report. Renovate
 would not open a pull request for it yet, so this does not apply it yet either.
 
-A security fix bypasses that hold in Renovate, so it bypasses this one too. An update flagged
-`isVulnerabilityAlert` is applied even while it is pending.
+Renovate does not make a security fix wait: its `vulnerabilityAlerts` configuration sets no
+`minimumReleaseAge`. So a security fix is not pending in the report, and this tool applies it.
 
 ## Renames
 
