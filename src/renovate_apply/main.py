@@ -29,7 +29,7 @@ from renovate_apply.errors import GitError, LockError, NoSolutionError, Renovate
 from renovate_apply.files import apply_group, repeats_of, restore, snapshot
 from renovate_apply.git import commit, is_tracked, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
-from renovate_apply.messages import DEFAULT_PREFIX, message, moves
+from renovate_apply.messages import DEFAULT_PREFIX, body, message
 from renovate_apply.models import Held
 from renovate_apply.report import (
     HELD_NO_SOLUTION,
@@ -315,8 +315,8 @@ def _announce(verb: str, one: Group, subject: str, locks: tuple[str, ...] = ()) 
     """Print what happened to one group: its subject, each move, and each refreshed lock file."""
     out.print(verb, style="dim", end="")
     out.print(subject, style="bold")
-    for name, moved in moves(one):
-        out.print(f"    {name}  {moved}")
+    for line in body(one).splitlines():
+        out.print(f"    {line}")
     for refreshed in locks:
         out.print(f"    {refreshed}  refreshed", style="dim")
 

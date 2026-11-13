@@ -121,7 +121,7 @@ The commit holds only `package-lock.json`:
 
 ```console
 applied  deps: update non-major
-    osls  4.3.1 -> 4.5.0
+    osls                       4.3.1 -> 4.5.0
     serverless-domain-manager  10.3.1 -> 10.5.1
     docker/package-lock.json  refreshed
 ```

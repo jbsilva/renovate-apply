@@ -102,6 +102,29 @@ def test_an_untracked_file_does_not_stop_the_run(
     assert git(repo, "status", "--porcelain").stdout.strip() == "?? notes.txt"
 
 
+def test_prints_the_names_of_a_group_aligned_as_in_its_commit_body(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The terminal lists the moves of a group the way git show will."""
+    postgres = docker_update(
+        dep_name="postgres",
+        update_type="digest",
+        current_value="18-alpine",
+        new_value="18-alpine",
+        current_digest="sha256:bbbb",
+        new_digest="sha256:dddd",
+        replace_string="postgres:18-alpine@sha256:bbbb",
+    )
+    given_report(monkeypatch, docker_update(), postgres)
+    assert run_cli(str(repo)) == 0
+
+    output = capsys.readouterr().out
+    assert "    ghcr.io/atuinsh/atuin  v18.13.3 -> 18.22.0\n" in output
+    assert "    postgres               18-alpine, new digest\n" in output
+
+
 def test_holds_a_major_and_says_so(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
