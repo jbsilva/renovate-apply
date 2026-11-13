@@ -9,7 +9,13 @@ from pathlib import Path
 import pytest
 
 from renovate_apply.errors import ScanError
-from renovate_apply.scan import REPORT_ENV_PATH, github_token, renovate_command, scan
+from renovate_apply.scan import (
+    GITHUB_ENV_NAME,
+    REPORT_ENV_PATH,
+    github_token,
+    renovate_command,
+    scan,
+)
 
 
 def fake_run(
@@ -82,6 +88,26 @@ def test_github_token_is_empty_when_gh_is_logged_out(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(shutil, "which", lambda _name: "/usr/bin/gh")
     monkeypatch.setattr(subprocess, "run", fake_run(returncode=1))
     assert github_token() == ""
+
+
+def test_scan_keeps_an_exported_renovate_token_when_gh_has_none(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A GITHUB_COM_TOKEN set for Renovate itself is not replaced with an empty one."""
+    seen: dict[str, str] = {}
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        env = kwargs.get("env")
+        if isinstance(env, dict):
+            seen.update(env)
+        return fake_run(report={})(argv, **kwargs)
+
+    monkeypatch.setattr(shutil, "which", lambda name: None if name == "gh" else f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setenv(GITHUB_ENV_NAME, "users-own-token")
+    scan(tmp_path)
+    assert seen[GITHUB_ENV_NAME] == "users-own-token"
 
 
 def test_scan_returns_the_report(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

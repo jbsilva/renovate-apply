@@ -80,11 +80,12 @@ held by default for the same reason. Naming a dependency in `skip` is how you co
 Renovate looks up actions, hooks and release tags on GitHub. Without a token those lookups are rate
 limited, and updates can quietly go missing.
 
-The tool takes a token from three places, in this order:
+The tool takes a token from four places, in this order:
 
 1. `--token`, if you pass it.
 2. `GITHUB_TOKEN` in the environment.
 3. `gh auth token`, if `gh` is installed and logged in.
+4. `GITHUB_COM_TOKEN` in the environment, the variable Renovate itself reads.
 
 !!! warning
 

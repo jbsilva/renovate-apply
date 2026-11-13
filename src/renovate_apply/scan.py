@@ -22,6 +22,7 @@ from renovate_apply.errors import ScanError
 
 REPORT_ENV_TYPE = "RENOVATE_REPORT_TYPE"
 REPORT_ENV_PATH = "RENOVATE_REPORT_PATH"
+GITHUB_ENV_NAME = "GITHUB_COM_TOKEN"
 
 # Renovate reads LOG_LEVEL and takes bunyan's names, so a shell that exports the longer "warning"
 # for everything else makes it exit 60 with "Invalid log level" and nothing about the repository.
@@ -68,15 +69,13 @@ def scan(root: Path, *, version: str | None = None, token: str | None = None) ->
     """
     Run Renovate over *root* and return the parsed report.
 
-    *token* defaults to whatever ``gh`` can give. Pass an empty string to run without one.
+    *token* defaults to whatever ``gh`` can give, then to an exported ``GITHUB_COM_TOKEN``. Pass an
+    empty string to run without one.
     """
+    if token is None:
+        token = github_token() or os.environ.get(GITHUB_ENV_NAME, "")
     argv = [*renovate_command(version), "--platform=local"]
-    env = {
-        **os.environ,
-        REPORT_ENV_TYPE: "file",
-        "LOG_LEVEL": LOG_LEVEL,
-        "GITHUB_COM_TOKEN": github_token() if token is None else token,
-    }
+    env = {**os.environ, REPORT_ENV_TYPE: "file", "LOG_LEVEL": LOG_LEVEL, GITHUB_ENV_NAME: token}
     with tempfile.TemporaryDirectory() as directory:
         report = Path(directory) / "renovate-report.json"
         env[REPORT_ENV_PATH] = str(report)
