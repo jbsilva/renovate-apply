@@ -24,18 +24,18 @@ real one has, and the tests swap them in for the scan.
 
 ## What is where
 
-| File                | Covers                                                |
-| ------------------- | ----------------------------------------------------- |
-| `helpers.py`        | Builders: sample files, updates, and reports.         |
-| `conftest.py`       | Fixtures: the isolated git env and a test repository. |
-| `test_main.py`      | The command end to end, over a real repository.       |
-| `test_replace.py`   | Templates and placing the edit.                       |
-| `test_report.py`    | Reading the report, holds, grouping.                  |
-| `test_scan.py`      | Which command runs, which token, what a failure says. |
-| `test_files.py`     | Reading and writing package files.                    |
-| `test_git.py`       | The clean check, staging, commits, hooks.             |
-| `test_lockfiles.py` | Finding and refreshing `uv.lock`.                     |
-| `test_messages.py`  | Commit subjects and bodies.                           |
+| File                | Covers                                                    |
+| ------------------- | --------------------------------------------------------- |
+| `helpers.py`        | Builders: sample files, updates, and reports.             |
+| `conftest.py`       | Fixtures: the isolated git env and a test repository.     |
+| `test_main.py`      | The command end to end, over a real repository.           |
+| `test_replace.py`   | Templates and placing the edit.                           |
+| `test_report.py`    | Reading the report, holds, grouping.                      |
+| `test_scan.py`      | Which command runs, which token, what a failure says.     |
+| `test_files.py`     | Reading and writing package files.                        |
+| `test_git.py`       | The clean check, staging, commits, hooks.                 |
+| `test_lockfiles.py` | Finding and refreshing `uv.lock` and `package-lock.json`. |
+| `test_messages.py`  | Commit subjects and bodies.                               |
 
 ## Settings that matter
 

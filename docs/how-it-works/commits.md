@@ -71,13 +71,21 @@ and nothing was undone:
 
 ## Lock files
 
-Renovate does not stop at the manifest. After it raises a floor in `pyproject.toml` it runs the
-package manager to update the lock file, and both land in the same commit. A run that skipped that
-would leave `uv.lock` describing the old floor, and any CI installing with `--locked` would fail on
-the commit this tool just made.
+Renovate does not stop at the manifest. After it raises a version in `pyproject.toml` or
+`package.json`, it runs the package manager to update the lock file, and both land in the same
+commit. A run that skipped that would leave the lock file describing the old version, and any CI
+installing with `uv sync --locked` or `npm ci` would fail on the commit this tool just made.
 
-So when an edited `pyproject.toml` has a `uv.lock` beside it, `uv lock` runs in that directory
+So when an edited manifest has its lock file beside it, the package manager runs in that directory
 before the commit, and the two are committed together:
+
+| Manifest         | Lock file           | Command                                                                 |
+| ---------------- | ------------------- | ----------------------------------------------------------------------- |
+| `pyproject.toml` | `uv.lock`           | `uv lock`                                                               |
+| `package.json`   | `package-lock.json` | `npm install --package-lock-only --ignore-scripts --no-audit --no-fund` |
+
+The npm command writes only the lock file. It does not create `node_modules` and does not run
+install scripts.
 
 ```console
 applied  deps: update cyclopts to 4.26.0
@@ -85,18 +93,18 @@ applied  deps: update cyclopts to 4.26.0
     uv.lock  refreshed
 ```
 
-Only uv is handled. It is the manager whose lock file sits next to the manifest and refreshes
-without reaching for anything else. Any other lock file is left alone; run its update yourself.
+Only uv and npm are handled. Any other lock file, such as `yarn.lock` or `pnpm-lock.yaml`, is left
+alone; run its update yourself.
 
 A manifest in a subdirectory is relocked in that subdirectory, not at the repository root.
 
-If `uv lock` fails, the group is undone: its manifests and lock files go back to what they held
-before the group. A manifest left edited would otherwise fail the repository's own uv-lock hook at
-the next commit. When uv finds no solution, the group is
+If the package manager fails, the group is undone: its manifests and lock files go back to what they
+held before the group. A manifest left edited would otherwise fail the repository's own lock file
+hook at the next commit. When the package manager finds no solution, the group is
 [held back](../usage/held-back.md#updates-that-do-not-lock). Any other failure fails the group.
 
 !!! warning
 
-    If `uv` is not on your `PATH` when a lock file needs refreshing, the group fails rather than
-    committing a manifest that no longer matches its lock file. Install `uv`, or pass `--no-lock` and
-    refresh it yourself.
+    If `uv` or `npm` is not on your `PATH` when its lock file needs refreshing, the group fails rather
+    than committing a manifest that no longer matches its lock file. Install it, or pass `--no-lock` and
+    refresh the lock file yourself.

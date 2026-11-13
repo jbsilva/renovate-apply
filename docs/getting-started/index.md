@@ -19,6 +19,7 @@ install the tool and set the defaults that suit your repository.
 | `git`                 | Reads the state of the working copy, stages the files, makes the commit. |
 | `renovate` or Node.js | Does the scan. Either install Renovate, or let `npx` fetch it.           |
 | `uv` (optional)       | Refreshes `uv.lock` after an edit to a `pyproject.toml` beside it.       |
+| `npm` (optional)      | Refreshes `package-lock.json` after an edit to a `package.json`.         |
 | `gh` (optional)       | Supplies a GitHub token, so lookups are not rate limited.                |
 
 !!! warning

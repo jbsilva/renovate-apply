@@ -36,7 +36,7 @@ src/renovate_apply/
 ├── report.py      flattens the report, holds some back, groups the rest
 ├── replace.py     turns one update into one text replacement
 ├── files.py       reads and writes the package files
-├── lockfiles.py   runs uv lock
+├── lockfiles.py   refreshes uv.lock and package-lock.json
 ├── messages.py    the commit subject and body
 ├── git.py         clean check, staging, commit
 ├── models.py      Update, Group, Held

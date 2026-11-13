@@ -21,7 +21,7 @@ Each step lives in its own module, so a change in Renovate's output breaks one p
 | `report.py`    | Flattens the report into `Update` objects, holds some back, groups the rest. |
 | `replace.py`   | Turns one update into one text replacement.                                  |
 | `files.py`     | Reads and writes the package files.                                          |
-| `lockfiles.py` | Runs `uv lock` when a manifest needs it.                                     |
+| `lockfiles.py` | Refreshes the lock file beside an edited manifest, with uv or npm.           |
 | `messages.py`  | Writes the commit subject and body.                                          |
 | `git.py`       | Checks the tree is clean, stages, commits.                                   |
 
@@ -49,4 +49,4 @@ It is Renovate's own auto-replace, handed over as data rather than performed.
 
 - [Reading the report](report.md): what the report holds and how it is narrowed.
 - [Making the edit](replacing.md): the replacement, and what happens when it does not fit.
-- [Commits and lock files](commits.md): grouping, messages, and `uv.lock`.
+- [Commits and lock files](commits.md): grouping, messages, and lock files.

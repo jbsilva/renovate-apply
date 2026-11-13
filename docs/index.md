@@ -44,7 +44,8 @@ the new version in it. That pair is Renovate's own auto-replace, handed over as 
     manager, and the rest.
 - One commit per Renovate branch, so a local run and a merged grouped pull request produce the same
     commits.
-- Refreshes `uv.lock` when it raises a floor in `pyproject.toml`, and commits the two together.
+- Refreshes `uv.lock` after an edit to `pyproject.toml`, and `package-lock.json` after an edit to
+    `package.json`, and commits each manifest with its lock file.
 - Reads your repository's Renovate configuration by running Renovate itself, so grouping, holds,
     package rules and versioning schemes all apply without being restated here.
 - Holds every major back until you ask for it.

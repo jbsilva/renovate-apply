@@ -102,8 +102,9 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     major
         Include major updates, which are held back by default.
     lock
-        Run ``uv lock`` after editing a ``pyproject.toml`` that has a ``uv.lock`` beside it, and
-        commit the two together. A group uv finds no solution for is undone and held back.
+        Refresh the lock file beside an edited manifest, ``uv.lock`` for ``pyproject.toml`` and
+        ``package-lock.json`` for ``package.json``, and commit the two together. A group the package
+        manager finds no solution for is undone and held back.
         ``--no-lock`` leaves the lock file to you.
     skip
         Hold a dependency back by name, as a glob, repeatable. This is how a repository keeps a
@@ -201,7 +202,7 @@ def _perform(
     A git failure is the exception: it leaves that group staged, and the next commit would take it
     in under another message. The run stops there, and the groups not tried count as failed.
 
-    Returns the groups that failed, for the caller to exit on, and the groups uv could not lock,
+    Returns the groups that failed, for the caller to exit on, and the groups that could not lock,
     which are held back rather than failed: the edit is sound, the dependency tree is not ready.
     """
     failed: list[Group] = []
@@ -258,7 +259,7 @@ def _relock(
     Refresh the lock files beside the edited manifests, or put the manifests back.
 
     A manifest left edited after its lock failed is one the next ``git commit`` refuses, through the
-    repository's own uv-lock hook, long after this run has ended.
+    repository's own lock file hook, long after this run has ended.
     """
     try:
         return refresh(root, package_files)

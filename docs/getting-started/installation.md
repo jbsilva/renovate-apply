@@ -66,10 +66,11 @@ rnv --renovate-version 43.224.0
 | Program | When you need it                                                                                                                      |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `uv`    | Only if a `pyproject.toml` you update has a `uv.lock` beside it. See [Commits and lock files](../how-it-works/commits.md#lock-files). |
+| `npm`   | Only if a `package.json` you update has a `package-lock.json` beside it. npm comes with Node.js.                                      |
 | `gh`    | Any run, really. It supplies the GitHub token that keeps lookups from being rate limited.                                             |
 
-If `uv` is missing when a lock file needs refreshing, the run stops and says so. Pass `--no-lock` to
-skip that step and update the lock file yourself.
+If `uv` or `npm` is missing when its lock file needs refreshing, the run stops and says so. Pass
+`--no-lock` to skip that step and update the lock file yourself.
 
 ## From source
 

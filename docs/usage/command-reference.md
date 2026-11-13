@@ -62,12 +62,13 @@ dependency dashboard. See [What is held back](held-back.md#majors).
 
 ### `--no-lock`
 
-Do not run `uv lock` after editing a `pyproject.toml` that has a `uv.lock` beside it. Default is to
-run it.
+Do not refresh the lock file beside an edited manifest: `uv lock` for a `pyproject.toml` with a
+`uv.lock`, and `npm install --package-lock-only` for a `package.json` with a `package-lock.json`.
+Default is to refresh it.
 
-Use this when `uv` is not installed, or when you want to update the lock file yourself. The commit
-will then hold a manifest whose lock file does not match it, and a group that does not lock is not
-held back. See [Updates that do not lock](held-back.md#updates-that-do-not-lock).
+Use this when `uv` or `npm` is not installed, or when you want to update the lock file yourself. The
+commit will then hold a manifest whose lock file does not match it, and a group that does not lock
+is not held back. See [Updates that do not lock](held-back.md#updates-that-do-not-lock).
 
 ### `--skip PATTERN`
 
@@ -121,4 +122,5 @@ Print the version, or the help.
 
 A run that applies three groups and fails on a fourth exits `1`. The three are still committed.
 
-A held-back update is not a failure. That includes a group that `uv lock` finds no solution for.
+A held-back update is not a failure. That includes a group that `uv lock` or `npm install` finds no
+solution for.

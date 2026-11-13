@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- A `package.json` with a `package-lock.json` beside it is relocked after an edit, with
+  `npm install --package-lock-only --ignore-scripts`, and the two are committed together, as
+  `uv.lock` already was. An `ERESOLVE` conflict holds the group back, like a uv lock with no
+  solution.
+
 ## [0.1.1] - 2026-10-11
 
 ### Fixed

@@ -52,8 +52,9 @@ the new version or digest in it. That pair is Renovate's own auto-replace, hande
   Dockerfiles, GitHub Actions SHA pins with their version comment, pre-commit and prek hook revs,
   versions matched by a custom regex manager, and the rest
 - One commit per Renovate branch, so a grouped pull request and a local run produce the same commits
-- Refreshes `uv.lock` when it raises a floor in `pyproject.toml`, and commits the two together, the
-  way Renovate's own pull request carries them
+- Refreshes `uv.lock` after an edit to `pyproject.toml`, and `package-lock.json` after an edit to
+  `package.json`, and commits each manifest with its lock file, the way Renovate's own pull request
+  carries them
 - Reads your repository's Renovate configuration by running Renovate itself, so grouping, holds,
   package rules and versioning schemes all apply without being restated here
 - Holds every major back until you ask for it
@@ -97,7 +98,7 @@ $ renovate-apply --help
 | `rnv --major`                 | Include the major updates, which are held back by default |
 | `rnv --skip python`           | Hold a dependency back by name, as a glob, repeatable     |
 | `rnv --prefix "build(deps):"` | Set the first word of every commit subject                |
-| `rnv --no-lock`               | Do not refresh `uv.lock` after editing a `pyproject.toml` |
+| `rnv --no-lock`               | Do not refresh the lock file beside an edited manifest    |
 | `rnv ~/code/other-repo`       | Work on another repository                                |
 
 `renovate-apply` and `rnv` are the same command.
@@ -152,9 +153,10 @@ reason:
   version bump, and this tool does not write it.
 - **Lock file updates**, where the range in the manifest already allows the new version, so only the
   lock file beside it moves. There is no edit to make in the package file, and moving the lock file
-  takes that package manager. Only `uv.lock` is refreshed here, after an edit to its manifest.
-- **Updates that do not lock**, where `uv lock` finds no solution for the new floor in
-  `pyproject.toml`. The group is undone, `uv.lock` included, and uv's explanation is printed.
+  takes that package manager. A lock file is refreshed here only after an edit to its manifest.
+- **Updates that do not lock**, where `uv lock` or `npm install` finds no solution for the new
+  version in the manifest. The group is undone, lock file included, and the package manager's
+  explanation is printed.
 - **A line two managers found**, when a regex manager in your Renovate configuration matches a line
   a built-in manager also reads. Renovate reports the line twice. The first update makes the edit,
   and the second is listed with it.
@@ -167,8 +169,10 @@ reason:
 - **`dependencyDashboardApproval` is invisible.** Renovate resolves it per package and the report
   does not carry it, so this tool cannot see which updates your configuration wants approved by
   hand. Holding every major covers the usual case; `--skip` covers the rest.
-- **Lock files: uv only.** A `pyproject.toml` with a `uv.lock` beside it is relocked and committed
-  together. Any other package manager's lock file is left untouched, so run its update yourself.
+- **Lock files: uv and npm only.** A `pyproject.toml` with a `uv.lock` beside it, and a
+  `package.json` with a `package-lock.json` beside it, are relocked and committed together. Any
+  other lock file, such as `yarn.lock` or `pnpm-lock.yaml`, is left untouched, so run its update
+  yourself.
 - **Renovate's lock file maintenance is not applied.** Those branches carry no dependency updates,
   so they are not in the report at all.
 - **A group that cannot be applied is reported and passed over.** The groups after it are still

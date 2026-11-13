@@ -34,7 +34,7 @@ class LockError(RenovateApplyError):
 
 
 class NoSolutionError(LockError):
-    """uv found no set of versions that satisfies the edited manifest."""
+    """The package manager found no set of versions that satisfies the edited manifest."""
 
 
 class GitError(RenovateApplyError):

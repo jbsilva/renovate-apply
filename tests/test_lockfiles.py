@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from renovate_apply.errors import LockError, NoSolutionError
-from renovate_apply.lockfiles import refresh
+from renovate_apply.lockfiles import NPM, refresh
 
 
 def uv_run(recorder: list[Path]) -> object:
@@ -146,3 +146,96 @@ def test_refresh_puts_back_a_lock_file_it_already_refreshed(
     with pytest.raises(NoSolutionError):
         refresh(tmp_path, ["first/pyproject.toml", "second/pyproject.toml"])
     assert (tmp_path / "first" / "uv.lock").read_text(encoding="utf-8") == "version = 1\n"
+
+
+def with_npm_project(root: Path) -> None:
+    """Write a package.json with a package-lock.json beside it."""
+    (root / "package.json").write_text("{}\n", encoding="utf-8")
+    (root / "package-lock.json").write_text("{}\n", encoding="utf-8")
+
+
+def test_refresh_relocks_a_package_json_with_npm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new version in package.json leaves package-lock.json behind until npm writes it."""
+    with_npm_project(tmp_path)
+    commands: list[list[str]] = []
+
+    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert refresh(tmp_path, ["package.json"]) == ("package-lock.json",)
+    assert commands == [list(NPM.argv)]
+
+
+def test_refresh_never_lets_npm_install_or_run_scripts() -> None:
+    """Only the lock file is written: a dependency's install script has no business running here."""
+    assert {"--package-lock-only", "--ignore-scripts"} <= set(NPM.argv)
+
+
+def test_refresh_relocks_uv_and_npm_projects_of_one_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each manifest goes to its own package manager, in its own directory."""
+    (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    (tmp_path / "web").mkdir()
+    with_npm_project(tmp_path / "web")
+    calls: list[tuple[str, Path]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cwd = kwargs.get("cwd")
+        assert isinstance(cwd, Path)
+        calls.append((argv[0], cwd))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    files = refresh(tmp_path, ["pyproject.toml", "web/package.json"])
+    assert files == ("uv.lock", "web/package-lock.json")
+    assert calls == [("uv", tmp_path), ("npm", tmp_path / "web")]
+
+
+def test_refresh_does_nothing_for_a_package_json_without_a_lock_file(tmp_path: Path) -> None:
+    """A package.json that is never locked, or locked by another tool, is left to its owner."""
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "yarn.lock").write_text("\n", encoding="utf-8")
+    assert refresh(tmp_path, ["package.json"]) == ()
+
+
+def test_refresh_says_what_to_do_when_npm_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The message names npm, not uv, and the way around it."""
+    with_npm_project(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    with pytest.raises(LockError, match=r"npm is not on PATH.*--no-lock"):
+        refresh(tmp_path, ["package.json"])
+
+
+def test_refresh_holds_a_package_json_npm_cannot_resolve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A peer dependency conflict is npm's "no solution", so the group is held, not failed."""
+    with_npm_project(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda argv, **_kwargs: subprocess.CompletedProcess(
+            argv, 1, "", "npm error code ERESOLVE\nnpm error ERESOLVE unable to resolve"
+        ),
+    )
+
+    with pytest.raises(NoSolutionError, match="npm install failed in"):
+        refresh(tmp_path, ["package.json"])
