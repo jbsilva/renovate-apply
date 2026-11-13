@@ -107,17 +107,26 @@ share one lock file at the workspace root. An edit to a member then leaves that 
 If your CI installs with `npm ci` or `uv sync --locked`, refresh the root lock file yourself before
 you push.
 
-### Lock file updates with npm
+### Lock file updates
 
-A lock file update moves a dependency to a new version that the range in `package.json` already
-allows. Nothing in `package.json` changes. npm makes the update in three steps:
+A lock file update moves a dependency to a new version that the range in the manifest already
+allows, or moves a transitive dependency that the manifest does not list. Nothing in the manifest
+changes, and the commit holds only the lock file.
+
+uv makes the update in one step, as Renovate's own pull request does:
+
+```bash
+uv lock --upgrade-package pyjwt==2.15.0
+```
+
+npm makes the update in three steps:
 
 1. The tool runs the npm command above with `name@version` for each update of the group.
 2. npm also writes the new version into `package.json`, so the tool puts `package.json` back.
 3. The tool runs the plain npm command again. The lock file then matches `package.json` again and
     keeps the new versions.
 
-The commit holds only `package-lock.json`:
+The npm commit holds only `package-lock.json`:
 
 ```console
 applied  deps: update non-major

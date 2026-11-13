@@ -250,6 +250,18 @@ def test_split_applies_an_npm_lock_file_update(package_name: str | None) -> None
     assert split([update], with_major=False) == ([update], [])
 
 
+def test_split_applies_a_uv_lock_file_update() -> None:
+    """Uv can move one package in uv.lock, a transitive one included, so the update is not held."""
+    update = npm_lock_update(
+        manager="pep621",
+        package_file="pyproject.toml",
+        dep_name="PyJWT",
+        package_name="pyjwt",
+        lock_files=("uv.lock",),
+    )
+    assert split([update], with_major=False) == ([update], [])
+
+
 def test_split_holds_a_lock_file_update_with_no_lock() -> None:
     """--no-lock means the package manager does not run, and nothing else can make the update."""
     _, held = split([npm_lock_update()], with_major=False, lock=False)
@@ -262,10 +274,9 @@ def test_split_holds_a_lock_file_update_with_no_lock() -> None:
         {"lock_files": ("yarn.lock",)},
         {"lock_files": ("other/package-lock.json",)},
         {"new_version": None},
-        {"manager": "pep621", "package_file": "pyproject.toml", "lock_files": ("uv.lock",)},
         {"package_name": "@serverless/osls"},
     ],
-    ids=["yarn", "lock elsewhere", "no version", "uv", "alias"],
+    ids=["yarn", "lock elsewhere", "no version", "alias"],
 )
 def test_split_holds_a_lock_file_update_npm_cannot_make(overrides: dict[str, object]) -> None:
     """Only a package-lock.json beside the manifest, with a version to lock, is moved here."""

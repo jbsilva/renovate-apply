@@ -9,10 +9,11 @@ CI that installs with ``uv sync --locked`` or ``npm ci`` would fail on the commi
 Each package manager here keeps its lock file next to the manifest and can refresh it without
 installing anything. A manifest with no lock file beside it needs nothing and is left alone.
 
-npm can also move one dependency inside the range its manifest allows, which Renovate reports as a
-lock file update. ``npm install name@version`` does that, but it also writes the new version into
-``package.json``. So the manifest is put back afterwards, and a second plain run makes the lock file
-match it again while it keeps the version just locked.
+Both can also move one dependency inside the range its manifest allows, which Renovate reports as a
+lock file update, a transitive dependency included. uv does it with ``--upgrade-package
+name==version``, as Renovate's own pull request does. ``npm install name@version`` also writes the
+version into ``package.json``, so the manifest is put back afterwards, and a second plain run makes
+the lock file match it again while it keeps the version just locked.
 """
 
 import shutil
@@ -36,7 +37,13 @@ class Locker:
     """What the tool prints when no versions satisfy the manifest, as opposed to failing to run."""
 
     manager: str = ""
-    """The Renovate manager whose lock file updates this can make; empty when it makes none."""
+    """The Renovate manager whose lock file updates this can make."""
+
+    pin: Callable[[str, str], tuple[str, ...]] = lambda _name, _version: ()
+    """The arguments that lock one package at one version."""
+
+    rewrites_manifest: bool = False
+    """Whether pinning also writes the version into the manifest, which then has to be put back."""
 
     @property
     def program(self) -> str:
@@ -49,6 +56,8 @@ UV = Locker(
     lock_file="uv.lock",
     argv=("uv", "lock"),
     no_solution="No solution found",
+    manager="pep621",
+    pin=lambda name, version: ("--upgrade-package", f"{name}=={version}"),
 )
 NPM = Locker(
     manifest="package.json",
@@ -58,6 +67,8 @@ NPM = Locker(
     # The error code: npm also warns "ERESOLVE overriding" on runs that fail for other reasons.
     no_solution="code ERESOLVE",
     manager="npm",
+    pin=lambda name, version: (f"{name}@{version}",),
+    rewrites_manifest=True,
 )
 _LOCKERS = (UV, NPM)
 
@@ -68,7 +79,7 @@ def can_move_in_lock(update: Update) -> bool:
     if lock_file is None or not update.new_version:
         return False
     # An alias needs "name@npm:package@version". Without it npm installs another package by name.
-    if update.package_name not in {None, update.dep_name}:
+    if update.manager == NPM.manager and update.package_name not in {None, update.dep_name}:
         return False
     return lock_file in update.lock_files
 
@@ -142,20 +153,28 @@ def _targets(root: Path, package_files: Sequence[str]) -> list[_Target]:
 
 
 def _specs(locker: Locker, directory: str, lock_updates: Sequence[Update]) -> list[str]:
-    """Return ``name@version`` for each lock file update of the manifest in *directory*."""
+    """Return the arguments that pin each lock file update of the manifest in *directory*."""
     manifest = _joined(directory, locker.manifest)
     return [
-        f"{update.dep_name}@{update.new_version}"
+        *locker.pin(_package(locker, update), str(update.new_version))
         for update in lock_updates
         if update.package_file == manifest
     ]
+
+
+def _package(locker: Locker, update: Update) -> str:
+    """Return the name the package manager knows: uv's is the normalized package name."""
+    if locker is UV and update.package_name:
+        return update.package_name
+    return update.dep_name
 
 
 def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = ()) -> None:
     """
     Run the package manager in one directory to refresh its lock file.
 
-    With *specs*, the manager first locks each of them, and the manifest it rewrote is put back.
+    With *specs*, the manager locks each of them. One that also rewrote the manifest has it put back
+    and runs once more, so the lock file matches the manifest again.
     """
     if not shutil.which(locker.program):
         msg = (
@@ -164,6 +183,9 @@ def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = (
             "--no-lock and refresh the lock file yourself."
         )
         raise LockError(msg)
+    if not locker.rewrites_manifest:
+        _run(root, locker, directory, specs)
+        return
     if specs:
         manifest = root / directory / locker.manifest
         original = manifest.read_bytes()

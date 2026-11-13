@@ -44,21 +44,26 @@ That is not a version bump, and this tool does not write it. Do it by hand.
 ## Lock file updates
 
 Sometimes the range in the manifest already allows the new version. An npm `^2.49.0` covers
-`2.49.1`, so nothing in `package.json` changes and only the lock file beside it moves. Renovate
-marks these `isLockfileUpdate`.
+`2.49.1`, so nothing in `package.json` changes and only the lock file beside it moves. A transitive
+dependency, which the manifest does not list, moves the same way. Renovate marks these
+`isLockfileUpdate`.
 
-There is no text to replace, so moving the lock file takes the package manager. For a
-`package-lock.json` beside the `package.json`, this tool runs npm and applies the update. See
-[Lock file updates with npm](../how-it-works/commits.md#lock-file-updates-with-npm).
+There is no text to replace, so moving the lock file takes the package manager. For a `uv.lock`
+beside the `pyproject.toml`, this tool runs uv, and for a `package-lock.json` beside the
+`package.json`, it runs npm. See [Lock file updates](../how-it-works/commits.md#lock-file-updates).
+
+Renovate's security fixes are lock file updates by default, because its `vulnerabilityAlerts` set
+`rangeStrategy: "update-lockfile"`. To raise the floor in the manifest instead, set
+`rangeStrategy: "bump"` inside `vulnerabilityAlerts` in your Renovate configuration.
 
 An npm alias, such as `"foo": "npm:bar@^1.0.0"`, is also held. To move an alias, npm needs a command
 that names both the alias and the package. This tool does not run that form.
 
-Any other lock file update is held, with this reason:
+Any other lock file update is held, for example one for a `yarn.lock`, with this reason:
 
 ```console
 Held back:
-  pydantic -> 2.13.1 (a lock file update this tool cannot make, the manifest does not change)
+  lodash -> 4.17.22 (a lock file update this tool cannot make, the manifest does not change)
 ```
 
 If git does not track the lock file, for example because `.gitignore` lists it, the update is held.
@@ -69,7 +74,8 @@ Held back:
   osls -> 4.5.0 (a lock file update, and git does not track the lock file)
 ```
 
-`--no-lock` holds every lock file update, because npm does not run. The reason then names the flag:
+`--no-lock` holds every lock file update, because the package manager does not run. The reason then
+names the flag:
 
 ```console
 Held back:

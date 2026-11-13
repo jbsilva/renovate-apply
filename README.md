@@ -151,8 +151,9 @@ reason:
 - **Renames**, where Renovate wants to replace a dependency with a different one. That edit is not a
   version bump, and this tool does not write it.
 - **Lock file updates**, where the range in the manifest already allows the new version, so only the
-  lock file beside it moves. npm makes these in a `package-lock.json`. Any other lock file update,
-  and every one under `--no-lock`, is held.
+  lock file beside it moves. uv makes these in a `uv.lock` and npm in a `package-lock.json`,
+  transitive dependencies included. Any other lock file update, and every one under `--no-lock`, is
+  held.
 - **Updates that do not lock**, where `uv lock` or `npm install` finds no solution for the new
   version in the manifest. The group is undone, lock file included, and the package manager's
   explanation is printed.

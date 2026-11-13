@@ -336,3 +336,32 @@ def test_refresh_puts_the_manifest_back_when_a_lock_file_update_fails(
     with pytest.raises(LockError, match="ETARGET"):
         refresh(tmp_path, ["package.json"], [npm_lock_update()])
     assert (tmp_path / "package.json").read_text(encoding="utf-8") == "{}\n"
+
+
+def test_refresh_pins_a_uv_lock_file_update_in_one_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Uv locks the version Renovate found, by its package name, and leaves pyproject.toml alone."""
+    (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        return relocked(argv, kwargs.get("cwd"))
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+    update = npm_lock_update(
+        manager="pep621",
+        package_file="pyproject.toml",
+        dep_name="PyJWT",
+        package_name="pyjwt",
+        new_version="2.15.0",
+        lock_files=("uv.lock",),
+    )
+
+    assert refresh(tmp_path, ["pyproject.toml"], [update]) == ("uv.lock",)
+    assert seen == [["uv", "lock", "--upgrade-package", "pyjwt==2.15.0"]]
+    assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == "[project]\n"
