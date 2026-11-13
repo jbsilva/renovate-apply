@@ -44,7 +44,7 @@ def test_apply_group_writes_nothing_when_given_drafts(tmp_path: Path) -> None:
     path = tmp_path / "stack" / "compose.yaml"
     path.parent.mkdir()
     original = "a: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa\n"
-    path.write_text(original, encoding="utf-8")
+    path.write_text(original, encoding="utf-8", newline="")
     drafts: dict[str, str] = {}
     group = Group("renovate/stack-images", (docker_update(),))
     assert apply_group(tmp_path, group, drafts=drafts) == ("stack/compose.yaml",)
