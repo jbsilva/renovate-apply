@@ -43,10 +43,20 @@ def run(
 
 
 def require_repository(root: Path) -> None:
-    """Raise unless *root* is inside a git working copy."""
+    """Raise unless *root* is the top of a git working copy."""
     completed = run(root, "rev-parse", "--is-inside-work-tree")
     if completed.returncode != 0 or completed.stdout.strip() != "true":
         msg = f"not a git repository: {root}"
+        raise WorkingCopyError(msg)
+    # Renovate lists files with git ls-files from where it starts, so below the top it never sees
+    # the repository's renovate.json and runs with its defaults.
+    top = Path(run(root, "rev-parse", "--show-toplevel").stdout.strip())
+    # samefile, not ==: a case-insensitive disk takes ~/Repo as ~/repo, and git spells it as stored.
+    if not top.samefile(root):
+        msg = (
+            f"{root} is inside the repository at {top}. Renovate reads its configuration only "
+            f"from the top, so run this there: rnv {top}"
+        )
         raise WorkingCopyError(msg)
 
 

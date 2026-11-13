@@ -25,6 +25,13 @@ rnv ~/code/other-repo
 
 The directory also decides which `pyproject.toml` is read for defaults.
 
+The directory must be the top of the repository. Renovate reads its configuration only from there,
+so a run from a subdirectory stops with this message:
+
+```console
+renovate-apply: /code/repo/services is inside the repository at /code/repo. Renovate reads its configuration only from the top, so run this there: rnv /code/repo
+```
+
 ## Options
 
 ### `--dry-run`

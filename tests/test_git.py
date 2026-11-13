@@ -22,6 +22,20 @@ def test_require_repository_rejects_a_plain_directory(tmp_path: Path, git_env: N
         require_repository(plain)
 
 
+def test_require_repository_accepts_the_top_in_another_case(repo: Path) -> None:
+    """On a case-insensitive disk, ~/REPO is ~/repo, though git spells it as it is stored."""
+    other_case = repo.parent / repo.name.upper()
+    if not other_case.exists():
+        pytest.skip("the file system tells case apart")
+    require_repository(other_case)
+
+
+def test_require_repository_rejects_a_subdirectory(repo: Path) -> None:
+    """Below the top, Renovate would miss the repository's own configuration."""
+    with pytest.raises(WorkingCopyError, match="inside the repository at"):
+        require_repository(repo / "stack")
+
+
 def test_require_clean_passes_on_a_clean_tree(repo: Path) -> None:
     """Nothing modified, nothing staged, nothing to say."""
     require_clean(repo)

@@ -97,7 +97,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     Parameters
     ----------
     directory
-        The repository to update. Defaults to the current directory.
+        The top of the repository to update. Defaults to the current directory.
     dry_run
         Say what would change and write nothing.
     commit_each
