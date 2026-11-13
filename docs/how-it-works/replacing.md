@@ -145,7 +145,8 @@ ended. So:
 ## All or nothing, per group
 
 Every edit of a group is computed before any of them is written. A group that fails on its second
-file leaves the first one alone.
+file leaves the first one alone. If a write fails, for example on a read-only file, the files that
+the group already wrote are put back.
 
 This matters because of what would otherwise happen. The group is reported as failed and passed
 over, but its first file would still be sitting there edited. The next group to touch that file

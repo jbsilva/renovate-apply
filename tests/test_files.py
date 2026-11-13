@@ -166,6 +166,30 @@ def test_apply_group_writes_nothing_when_a_later_file_cannot_be_edited(tmp_path:
     assert first.read_text(encoding="utf-8") == original
 
 
+def test_apply_group_puts_back_the_first_file_when_a_later_write_fails(tmp_path: Path) -> None:
+    """A write that fails halfway, such as on a read-only file, still leaves no file edited."""
+    first = tmp_path / "compose.yaml"
+    original = "a: ghcr.io/atuinsh/atuin:v18.13.3@sha256:aaaa\n"
+    first.write_text(original, encoding="utf-8")
+    second = tmp_path / "other.yaml"
+    second.write_text("b: postgres:18-alpine@sha256:bbbb\n", encoding="utf-8")
+    second.chmod(0o444)
+    group = Group(
+        "renovate/stack-images",
+        (
+            docker_update(package_file="compose.yaml"),
+            docker_update(
+                package_file="other.yaml",
+                dep_name="postgres",
+                replace_string="postgres:18-alpine@sha256:bbbb",
+            ),
+        ),
+    )
+    with pytest.raises(ReplaceError, match="cannot write"):
+        apply_group(tmp_path, group)
+    assert first.read_text(encoding="utf-8") == original
+
+
 def test_restore_puts_back_what_snapshot_read(tmp_path: Path) -> None:
     """An edit that has to be undone comes back byte for byte, Windows line endings included."""
     path = tmp_path / "pyproject.toml"

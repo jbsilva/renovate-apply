@@ -26,15 +26,15 @@ def apply_group(
     """
     Make every edit of *group*, and return the package files it touched.
 
-    Every edit is computed before any of them is written, so a group that fails on its second file
-    leaves the first one as it was. Written as it went, that first file would stay edited after the
-    group was reported as failed, and the next group to touch it would stage and commit the edit
-    under its own message.
+    A group that fails on its second file leaves the first one as it was, whether the edit or the
+    write failed. Left edited, the next group to touch that file would commit the edit under its own
+    message.
 
     With *drafts*, nothing is written: the edited texts go into *drafts* and are read back from it,
     so a later group of a dry run finds what an earlier one would have written.
     """
-    edited: list[tuple[str, str]] = []
+    originals: dict[str, str] = {}
+    edited: dict[str, str] = {}
     for package_file in group.package_files:
         # A lock file update has no text in the package file; the package manager moves it.
         mine = [
@@ -44,13 +44,25 @@ def apply_group(
         ]
         known = drafts or {}
         text = known[package_file] if package_file in known else _read(root / package_file)
-        edited.append((package_file, apply_all(text, mine)))
-    for package_file, text in edited:
-        if drafts is None:
-            _write(root / package_file, text)
-        else:
-            drafts[package_file] = text
+        originals[package_file] = text
+        edited[package_file] = apply_all(text, mine)
+    if drafts is None:
+        _write_all(root, edited, originals)
+    else:
+        drafts.update(edited)
     return group.package_files
+
+
+def _write_all(root: Path, edited: Mapping[str, str], originals: Mapping[str, str]) -> None:
+    """Write every edited file, or, when one write fails, put back the ones already written."""
+    written: dict[str, str] = {}
+    try:
+        for package_file, text in edited.items():
+            _write(root / package_file, text)
+            written[package_file] = originals[package_file]
+    except ReplaceError:
+        restore(root, written)
+        raise
 
 
 def repeats_of(root: Path, updates: Sequence[Update]) -> list[Update | None]:
