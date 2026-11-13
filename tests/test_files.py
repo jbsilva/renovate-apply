@@ -1,5 +1,6 @@
 """Writing the package files: every edit of a group, and nothing else about the file."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,50 @@ def test_repeats_of_names_the_first_of_one_edit_found_twice(tmp_path: Path) -> N
     path.write_text(WORKFLOW, encoding="utf-8")
     other = docker_update()
     assert repeats_of(tmp_path, [action, other, regex]) == [None, None, action]
+
+
+def test_repeats_of_keeps_the_second_use_of_a_text_another_manager_found_once(
+    tmp_path: Path,
+) -> None:
+    """A regex manager that also finds the second copy of a line edits that copy itself."""
+    (tmp_path / "Dockerfile").write_text("FROM node:18.0.0\nFROM node:18.0.0\n", encoding="utf-8")
+    built_in = docker_update(
+        manager="dockerfile",
+        package_file="Dockerfile",
+        dep_name="node",
+        current_value="18.0.0",
+        new_value="18.0.1",
+        current_digest=None,
+        new_digest=None,
+        replace_string="node:18.0.0",
+        replace_template="{{depName}}:{{newValue}}",
+    )
+    first_line = replace(built_in, manager="regex", dep_index=0)
+    second_line = replace(first_line, dep_index=1)
+    assert repeats_of(tmp_path, [built_in, first_line, second_line]) == [None, built_in, None]
+
+
+def test_repeats_of_compares_uses_by_line_across_branches(tmp_path: Path) -> None:
+    """Two equal lines a built-in manager puts on two branches are still a first and a second."""
+    (tmp_path / "Dockerfile").write_text("FROM node:18.0.0\nFROM node:18.0.0\n", encoding="utf-8")
+    stage = docker_update(
+        manager="dockerfile",
+        package_file="Dockerfile",
+        dep_name="node",
+        branch_name="renovate/stage",
+        current_value="18.0.0",
+        new_value="18.0.1",
+        current_digest=None,
+        new_digest=None,
+        replace_string="node:18.0.0",
+        replace_template="{{depName}}:{{newValue}}",
+        dep_index=0,
+    )
+    final = replace(stage, branch_name="renovate/final", dep_index=1)
+    first_line = replace(stage, manager="regex", branch_name="renovate/regex")
+    second_line = replace(first_line, dep_index=1)
+    updates = [stage, final, first_line, second_line]
+    assert repeats_of(tmp_path, updates) == [None, None, stage, final]
 
 
 def test_apply_group_writes_nothing_when_a_later_file_cannot_be_edited(tmp_path: Path) -> None:

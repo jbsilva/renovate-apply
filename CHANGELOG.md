@@ -36,6 +36,9 @@ All notable changes to this project are documented here. The format is based on
   that follows its own name. Before, a name in a script or inside a longer name, such as `eslint` in
   `@typescript-eslint/parser`, sent the edit to another dependency's line. If the name is not in the
   file, the group fails instead of editing the first copy of the version.
+- When a regex manager finds two copies of a line and a built-in manager finds only the first, the
+  second copy is now updated. Before, it was held as a repeat of the first copy, and it kept its old
+  version.
 
   that follows its own name. Before, a name elsewhere sent the edit to another dependency's line: in
   a script, inside a longer name such as `@typescript-eslint/parser` for `eslint`, or inside an npm

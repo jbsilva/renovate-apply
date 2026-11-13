@@ -59,24 +59,64 @@ def repeats_of(root: Path, updates: Sequence[Update]) -> list[Update | None]:
 
     None stands for an update that repeats nothing. The list lines up with *updates*.
     """
-    kept: list[Update] = []
+    kept: list[tuple[Update, int]] = []
     firsts: list[Update | None] = []
     texts: dict[str, str] = {}
-    for update in updates:
-        first = next((one for one in kept if _same_edit(root, texts, one, update)), None)
+    for update, use in zip(updates, _uses(updates), strict=True):
+        first = next(
+            (one for one, at in kept if _same_edit(root, texts, (one, at), (update, use))),
+            None,
+        )
         if first is None:
-            kept.append(update)
+            kept.append((update, use))
         firsts.append(first)
     return firsts
 
 
-def _same_edit(root: Path, texts: dict[str, str], first: Update, second: Update) -> bool:
-    """Compare two updates against their file, reading each file once."""
-    if first.package_file != second.package_file:
+def _uses(updates: Sequence[Update]) -> list[int]:
+    """
+    Return which copy of its text each update edits, counting from 1.
+
+    The n-th line holding one text, for one manager, is its n-th copy, whatever branch each update
+    of that line is on. Without a line number, equal updates count as successive uses.
+    """
+    lines: dict[tuple[object, ...], set[int]] = {}
+    for update in updates:
+        if update.dep_index is not None:
+            lines.setdefault(_text_of(update), set()).add(update.dep_index)
+    uses: list[int] = []
+    for index, update in enumerate(updates):
+        if update.dep_index is None:
+            uses.append(updates[:index].count(update) + 1)
+        else:
+            uses.append(sorted(lines[_text_of(update)]).index(update.dep_index) + 1)
+    return uses
+
+
+def _text_of(update: Update) -> tuple[object, ...]:
+    """Return what one manager found on a line, which equal lines share."""
+    return (
+        update.manager,
+        update.package_file,
+        update.replace_string,
+        update.current_value,
+        update.current_digest,
+    )
+
+
+def _same_edit(
+    root: Path,
+    texts: dict[str, str],
+    first: tuple[Update, int],
+    second: tuple[Update, int],
+) -> bool:
+    """Compare two uses of a text against their file, reading each file once."""
+    (one, one_use), (other, other_use) = first, second
+    if one.package_file != other.package_file:
         return False
-    if first.package_file not in texts:
-        texts[first.package_file] = _read(root / first.package_file)
-    return same_edit(texts[first.package_file], first, second)
+    if one.package_file not in texts:
+        texts[one.package_file] = _read(root / one.package_file)
+    return same_edit(texts[one.package_file], one, other, uses=(one_use, other_use))
 
 
 def snapshot(root: Path, package_files: Sequence[str]) -> dict[str, str]:
