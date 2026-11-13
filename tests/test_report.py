@@ -14,6 +14,7 @@ from renovate_apply.report import (
     HELD_PENDING,
     HELD_RENAME,
     HELD_SKIPPED,
+    HELD_UNTRACKED_LOCK,
     chain_branches,
     group,
     held_collision,
@@ -387,3 +388,16 @@ def test_group_keeps_the_report_order_in_a_cycle() -> None:
         first.branch_name,
         second.branch_name,
     ]
+
+
+def test_split_holds_a_lock_file_update_whose_lock_file_git_does_not_track() -> None:
+    """Renovate reads an ignored lock file from disk, but this tool commits only tracked ones."""
+    asked: list[str] = []
+
+    def untracked(path: str) -> bool:
+        asked.append(path)
+        return False
+
+    _, held = split([npm_lock_update()], with_major=False, tracked=untracked)
+    assert asked == ["package-lock.json"]
+    assert held[0].reason == HELD_UNTRACKED_LOCK

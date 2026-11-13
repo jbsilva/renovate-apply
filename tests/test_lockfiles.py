@@ -203,6 +203,12 @@ def test_refresh_fails_a_lock_file_update_with_no_lock_file_on_disk(tmp_path: Pa
         refresh(tmp_path, ["package.json"], [npm_lock_update()])
 
 
+def test_refresh_leaves_alone_a_lock_file_git_does_not_track(tmp_path: Path) -> None:
+    """An ignored package-lock.json is not the repository's, so npm does not run for it."""
+    with_npm_project(tmp_path)
+    assert refresh(tmp_path, ["package.json"], tracked=lambda _path: False) == ()
+
+
 def test_refresh_never_lets_npm_install_or_run_scripts() -> None:
     """Only the lock file is written: a dependency's install script has no business running here."""
     assert {"--package-lock-only", "--ignore-scripts"} <= set(NPM.argv)

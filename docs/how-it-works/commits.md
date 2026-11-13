@@ -98,6 +98,10 @@ alone; run its update yourself.
 
 A manifest in a subdirectory is relocked in that subdirectory, not at the repository root.
 
+A lock file that git does not track is left alone. For example, a library can list
+`package-lock.json` in `.gitignore`. Renovate still reads that file from disk, but the commit does
+not carry it. A lock file update for it is held back.
+
 The tool looks for the lock file only beside the manifest. In an npm or uv workspace, the members
 share one lock file at the workspace root. An edit to a member then leaves that lock file as it was.
 If your CI installs with `npm ci` or `uv sync --locked`, refresh the root lock file yourself before

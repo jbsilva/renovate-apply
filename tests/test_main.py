@@ -529,6 +529,7 @@ def relocks(
     root: Path,
     package_files: Sequence[str],
     _lock_updates: Sequence[Update] = (),
+    **_kwargs: object,
 ) -> tuple[str, ...]:
     """Stand in for refresh: rewrite uv.lock the way a successful uv lock would."""
     if "pyproject.toml" not in package_files:
@@ -544,6 +545,7 @@ def fails_to_lock(error: LockError) -> object:
         _root: Path,
         package_files: Sequence[str],
         _lock_updates: Sequence[Update] = (),
+        **_kwargs: object,
     ) -> tuple[str, ...]:
         if "pyproject.toml" in package_files:
             raise error
@@ -624,6 +626,7 @@ def test_commits_a_lock_file_update_with_the_manifest_unchanged(
         root: Path,
         _package_files: Sequence[str],
         lock_updates: Sequence[Update] = (),
+        **_kwargs: object,
     ) -> tuple[str, ...]:
         moved.extend(lock_updates)
         (root / "package-lock.json").write_text('{"osls": "4.5.0"}\n', encoding="utf-8")
@@ -650,7 +653,7 @@ def test_a_group_an_earlier_group_already_made_is_not_a_failure(
     git(repo, "add", "-A")
     git(repo, "commit", "-m", "add an npm project")
 
-    def refresh(root: Path, *_args: object) -> tuple[str, ...]:
+    def refresh(root: Path, *_args: object, **_kwargs: object) -> tuple[str, ...]:
         lock = root / "package-lock.json"
         if lock.read_text(encoding="utf-8") == '{"fixed": true}\n':
             return ()
@@ -683,7 +686,7 @@ def test_a_run_whose_only_group_has_nothing_to_commit_applies_nothing(
     (repo / "package-lock.json").write_text("{}\n", encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-m", "add an npm project")
-    monkeypatch.setattr(main_module, "refresh", lambda *_args: ())
+    monkeypatch.setattr(main_module, "refresh", lambda *_args, **_kwargs: ())
     given_report(monkeypatch, npm_lock_update())
     assert run_cli(str(repo), mode) == 0
 
@@ -694,6 +697,49 @@ def test_a_run_whose_only_group_has_nothing_to_commit_applies_nothing(
     )
     assert "Nothing to apply." in out
     assert "applied" not in out
+
+
+def test_an_ignored_lock_file_is_neither_relocked_nor_committed(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A library that ignores package-lock.json commits package.json alone, as Renovate would."""
+    (repo / ".gitignore").write_text("package-lock.json\n", encoding="utf-8")
+    (repo / "package.json").write_text('{"dependencies": {"a": "^1.0.0"}}\n', encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add an npm library")
+    (repo / "package-lock.json").write_text("{}\n", encoding="utf-8")
+    update = Update(
+        manager="npm",
+        package_file="package.json",
+        dep_name="a",
+        update_type="minor",
+        branch_name="renovate/a",
+        current_value="^1.0.0",
+        new_value="^1.1.0",
+    )
+    given_report(monkeypatch, update)
+    assert run_cli(str(repo)) == 0
+
+    files = git(repo, "show", "--name-only", "--pretty=", "HEAD").stdout.split()
+    assert files == ["package.json"]
+    assert (repo / "package-lock.json").read_text(encoding="utf-8") == "{}\n"
+
+
+def test_a_lock_file_update_of_an_ignored_lock_file_is_held(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """With nothing to commit it in, the update is held back rather than failing the run."""
+    (repo / ".gitignore").write_text("package-lock.json\n", encoding="utf-8")
+    (repo / "package.json").write_text('{"dependencies": {"osls": "^4.0.0"}}\n', encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add an npm library")
+    (repo / "package-lock.json").write_text("{}\n", encoding="utf-8")
+    given_report(monkeypatch, npm_lock_update())
+    assert run_cli(str(repo)) == 0
+    assert "git does not track the lock file" in capsys.readouterr().out
 
 
 def test_a_lock_that_fails_for_another_reason_fails_the_group(

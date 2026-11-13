@@ -6,7 +6,7 @@ import pytest
 from helpers import git
 
 from renovate_apply.errors import GitError, WorkingCopyError
-from renovate_apply.git import commit, require_clean, require_repository, stage
+from renovate_apply.git import commit, is_tracked, require_clean, require_repository, stage
 
 
 def test_require_repository_accepts_a_working_copy(repo: Path) -> None:
@@ -81,6 +81,22 @@ def test_commit_reports_a_file_git_cannot_stage(repo: Path) -> None:
     """A package file that is not there fails at staging, before anything is committed."""
     with pytest.raises(GitError, match="git add failed"):
         commit(repo, ["nothing/here.yaml"], ["deps: update nothing"])
+
+
+@pytest.mark.parametrize(
+    ("path", "tracked"),
+    [("stack/compose.yaml", True), ("notes.txt", False), ("missing.txt", False)],
+    ids=["committed", "untracked", "missing"],
+)
+def test_is_tracked_says_whether_git_tracks_a_path(
+    repo: Path,
+    *,
+    path: str,
+    tracked: bool,
+) -> None:
+    """Only a committed file is one a commit may carry a change to."""
+    (repo / "notes.txt").write_text("scratch\n", encoding="utf-8")
+    assert is_tracked(repo, path) is tracked
 
 
 def test_stage_adds_only_the_files_it_was_given_and_commits_nothing(repo: Path) -> None:

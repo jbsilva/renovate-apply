@@ -59,6 +59,11 @@ def require_clean(root: Path) -> None:
         raise WorkingCopyError(msg)
 
 
+def is_tracked(root: Path, path: str) -> bool:
+    """Say whether git tracks *path*, so a commit may carry a change to it."""
+    return run(root, "ls-files", "--error-unmatch", "--", path).returncode == 0
+
+
 def stage(root: Path, package_files: Sequence[str]) -> None:
     """Add *package_files* to the index, and nothing else."""
     staged = run(root, "add", "--", *package_files)

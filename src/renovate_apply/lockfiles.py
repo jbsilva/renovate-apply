@@ -19,7 +19,7 @@ import shutil
 import subprocess  # nosec B404  # only used to run a package manager, with an argv from _LOCKERS
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-lazy from collections.abc import Sequence
+lazy from collections.abc import Callable, Sequence
 
 from renovate_apply.errors import LockError, NoSolutionError
 lazy from renovate_apply.models import Update
@@ -64,22 +64,32 @@ _LOCKERS = (UV, NPM)
 
 def can_move_in_lock(update: Update) -> bool:
     """Say whether a lock file update can be made here: a package manager moves it, not an edit."""
-    locker = _locker_for(PurePosixPath(update.package_file).name)
-    if locker is None or locker.manager != update.manager or not update.new_version:
+    lock_file = lock_file_of(update)
+    if lock_file is None or not update.new_version:
         return False
     # An alias needs "name@npm:package@version". Without it npm installs another package by name.
     if update.package_name not in {None, update.dep_name}:
         return False
-    return _joined(update.directory, locker.lock_file) in update.lock_files
+    return lock_file in update.lock_files
+
+
+def lock_file_of(update: Update) -> str | None:
+    """Return the lock file this tool relocks for the update's manifest, or None if it has none."""
+    locker = _locker_for(PurePosixPath(update.package_file).name)
+    if locker is None or locker.manager != update.manager:
+        return None
+    return _joined(update.directory, locker.lock_file)
 
 
 def refresh(
     root: Path,
     package_files: Sequence[str],
     lock_updates: Sequence[Update] = (),
+    *,
+    tracked: Callable[[str], bool] = lambda _path: True,
 ) -> tuple[str, ...]:
     """
-    Refresh the lock file of every edited manifest that has one beside it.
+    Refresh the lock file of every edited manifest that has one beside it, and *tracked* accepts.
 
     Each of *lock_updates*, which ``can_move_in_lock`` accepted, is moved to its new version in the
     lock file of its own manifest.
@@ -88,7 +98,7 @@ def refresh(
     commit them together with the manifest. When one of them fails, every lock file is put back as
     it was, so a group that touches two projects does not leave the first one relocked.
     """
-    targets = _targets(root, package_files)
+    targets = [target for target in _targets(root, package_files) if tracked(target[2])]
     _require_lock_files(targets, lock_updates)
     before = {lock_file: (root / lock_file).read_bytes() for _, _, lock_file in targets}
     try:

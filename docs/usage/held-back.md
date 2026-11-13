@@ -61,6 +61,14 @@ Held back:
   pydantic -> 2.13.1 (a lock file update this tool cannot make, the manifest does not change)
 ```
 
+If git does not track the lock file, for example because `.gitignore` lists it, the update is held.
+A commit cannot carry that lock file:
+
+```console
+Held back:
+  osls -> 4.5.0 (a lock file update, and git does not track the lock file)
+```
+
 `--no-lock` holds every lock file update, because npm does not run. The reason then names the flag:
 
 ```console

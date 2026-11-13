@@ -44,6 +44,7 @@ sonarqube
 tasklist
 testpypi
 twemoji
+unmatch
 uvx
 viewports
 xdist

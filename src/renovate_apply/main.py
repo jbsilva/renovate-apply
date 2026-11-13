@@ -16,6 +16,7 @@ Nothing is pushed and nothing is deployed. Read the diff, then push.
 import sys
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
@@ -26,7 +27,7 @@ from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
 from renovate_apply.errors import GitError, LockError, NoSolutionError, RenovateApplyError
 from renovate_apply.files import apply_group, repeats_of, restore, snapshot
-from renovate_apply.git import commit, require_clean, require_repository, stage
+from renovate_apply.git import commit, is_tracked, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
@@ -185,7 +186,8 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
         err.print(f"renovate-apply: renovate reported: {problem}", style="yellow")
 
     updates, collisions = split_collisions(read_updates(report))
-    to_apply, held = split(updates, with_major=major, skip=skip, lock=lock)
+    tracked = partial(is_tracked, root)
+    to_apply, held = split(updates, with_major=major, skip=skip, lock=lock, tracked=tracked)
     held += [Held(update, held_collision(first)) for update, first in collisions]
     repeats = repeats_of(root, to_apply)
     rebased, superseded, order = chain_branches(to_apply, repeats)
@@ -328,7 +330,9 @@ def _relock(root: Path, one: Group, originals: dict[str, str]) -> tuple[str, ...
     """
     try:
         lock_updates = [update for update in one.updates if update.is_lockfile_update]
-        return refresh(root, one.package_files, lock_updates)
+        # Renovate only sees lock files in the repository; an ignored one is no part of the commit.
+        tracked = partial(is_tracked, root)
+        return refresh(root, one.package_files, lock_updates, tracked=tracked)
     except LockError:
         restore(root, originals)
         raise

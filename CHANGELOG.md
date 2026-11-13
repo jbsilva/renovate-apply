@@ -25,6 +25,9 @@ All notable changes to this project are documented here. The format is based on
   the minor, in a second commit. Each later step of one line is applied on top of the step before
   it. For example, a minor follows a patch, and a major follows another major. Any other pair of
   updates to one line on two branches holds the later one.
+- A lock file that git does not track is no longer refreshed or committed. Before, an ignored
+  `uv.lock` beside an edited `pyproject.toml` stopped the run when `git add` refused it, and an
+  untracked one entered the commit as a new file. A lock file update for such a file is held back.
 
 ## [0.1.1] - 2026-10-11
 

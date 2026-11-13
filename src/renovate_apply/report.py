@@ -6,12 +6,12 @@ narrows the JSON into the typed objects in ``models``, so a shape Renovate chang
 loudly in this one module instead of halfway through an edit.
 """
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from fnmatch import fnmatchcase
 
 from renovate_apply.errors import ReplaceError, ReportError
-from renovate_apply.lockfiles import can_move_in_lock
+from renovate_apply.lockfiles import can_move_in_lock, lock_file_of
 from renovate_apply.models import Group, Held, Update
 from renovate_apply.replace import search_and_replacement
 
@@ -25,6 +25,7 @@ HELD_RENAME = "a rename, which this tool does not write"
 HELD_SKIPPED = "skipped by configuration"
 HELD_LOCKFILE = "a lock file update this tool cannot make, the manifest does not change"
 HELD_NO_LOCK = "a lock file update, which --no-lock leaves to you"
+HELD_UNTRACKED_LOCK = "a lock file update, and git does not track the lock file"
 # Not decided from the report: main sets it when the lock file finds no solution for the edit.
 HELD_NO_SOLUTION = "the lock file finds no solution for it, see above"
 
@@ -67,6 +68,7 @@ def split(
     with_major: bool,
     skip: Sequence[str] = (),
     lock: bool = True,
+    tracked: Callable[[str], bool] = lambda _path: True,
 ) -> tuple[list[Update], list[Held]]:
     """
     Split the updates into the ones to apply and the ones to hold back, with a reason each.
@@ -78,13 +80,13 @@ def split(
     *skip* holds a dependency by name, as a glob. That is the answer to the same blind spot on a
     non-major: a repository that keeps one dependency on the dashboard names it here.
 
-    A lock file update is applied only when *lock* allows the package manager to run and that
-    package manager can move one dependency in its lock file.
+    A lock file update is applied only when *lock* allows the package manager to run, that
+    package manager can move one dependency in its lock file, and git *tracks* that lock file.
     """
     to_apply: list[Update] = []
     held: list[Held] = []
     for update in updates:
-        reason = _hold_reason(update, with_major=with_major, skip=skip, lock=lock)
+        reason = _hold_reason(update, with_major=with_major, skip=skip, lock=lock, tracked=tracked)
         if reason is None:
             to_apply.append(update)
         else:
@@ -271,13 +273,14 @@ def _hold_reason(
     with_major: bool,
     skip: Sequence[str],
     lock: bool,
+    tracked: Callable[[str], bool],
 ) -> str | None:
     """Return why this update is not applied, or None when it is."""
     if any(fnmatchcase(update.dep_name, pattern) for pattern in skip):
         return HELD_SKIPPED
     if update.new_name is not None and update.new_name != update.dep_name:
         return HELD_RENAME
-    held_lock = _lock_reason(update, lock=lock)
+    held_lock = _lock_reason(update, lock=lock, tracked=tracked)
     if held_lock is not None:
         return held_lock
     # A security fix bypasses Renovate's own holds, so it bypasses this one too.
@@ -288,13 +291,16 @@ def _hold_reason(
     return None
 
 
-def _lock_reason(update: Update, *, lock: bool) -> str | None:
+def _lock_reason(update: Update, *, lock: bool, tracked: Callable[[str], bool]) -> str | None:
     """Return why a lock file update is not applied, or None when it is (or is not one)."""
     if not update.is_lockfile_update:
         return None
     if not can_move_in_lock(update):
         return HELD_LOCKFILE
-    return None if lock else HELD_NO_LOCK
+    if not lock:
+        return HELD_NO_LOCK
+    lock_file = lock_file_of(update)
+    return None if lock_file is None or tracked(lock_file) else HELD_UNTRACKED_LOCK
 
 
 def _iter_updates(report: Mapping[str, object]) -> Iterator[Update]:
