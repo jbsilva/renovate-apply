@@ -107,3 +107,43 @@ def test_stage_adds_only_the_files_it_was_given_and_commits_nothing(repo: Path) 
 
     assert git(repo, "diff", "--cached", "--name-only").stdout.split() == ["stack/compose.yaml"]
     assert git(repo, "rev-list", "--count", "HEAD").stdout.strip() == "1"
+
+
+def test_stage_reads_a_path_with_brackets_as_a_name_not_a_glob(repo: Path) -> None:
+    """A Next.js route directory is one file, and an untracked look-alike stays out of it."""
+    route = repo / "app" / "[id]" / "package.json"
+    route.parent.mkdir(parents=True)
+    route.write_text("{}\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add a route")
+    route.write_text('{"a": 1}\n', encoding="utf-8")
+    look_alike = repo / "app" / "i" / "package.json"
+    look_alike.parent.mkdir()
+    look_alike.write_text("{}\n", encoding="utf-8")
+
+    stage(repo, ["app/[id]/package.json"])
+    staged = git(repo, "diff", "--cached", "--name-only").stdout.split()
+    assert staged == ["app/[id]/package.json"]
+    assert not is_tracked(repo, "app/[i]/package.json")
+
+
+def test_commit_leaves_the_hooks_free_to_match_paths_by_glob(repo: Path) -> None:
+    """A hook that picks its files with a pattern sees the staged file, as in a commit by hand."""
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text(
+        "#!/bin/sh\ngit diff --cached --name-only -- '*.yaml' | grep -q .\n", encoding="utf-8"
+    )
+    hook.chmod(0o755)
+    (repo / "stack" / "compose.yaml").write_text("image: x\n", encoding="utf-8")
+    commit(repo, ["stack/compose.yaml"], ["deps: x"])
+
+
+def test_stage_reads_literal_paths_when_the_environment_turns_magic_off(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exported GIT_LITERAL_PATHSPECS would make ":(literal)" part of the file name."""
+    monkeypatch.setenv("GIT_LITERAL_PATHSPECS", "1")
+    (repo / "stack" / "compose.yaml").write_text("image: x\n", encoding="utf-8")
+    assert is_tracked(repo, "stack/compose.yaml")
+    stage(repo, ["stack/compose.yaml"])

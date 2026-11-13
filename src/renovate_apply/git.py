@@ -6,6 +6,7 @@ unrelated change out of a dependency commit. The hooks are never skipped: a hook
 file is a reason to stop, not a reason to pass ``--no-verify``.
 """
 
+import os
 import shutil
 import subprocess  # nosec B404  # only used to run git, with an argv this package builds
 lazy from collections.abc import Sequence
@@ -14,8 +15,21 @@ lazy from pathlib import Path
 from renovate_apply.errors import GitError, WorkingCopyError
 
 
-def run(root: Path, *args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    """Run one git command in *root* and hand back the finished process, failure and all."""
+_NO_MAGIC = "GIT_LITERAL_PATHSPECS"
+
+
+def run(
+    root: Path,
+    *args: str,
+    capture: bool = True,
+    magic: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """
+    Run one git command in *root* and hand back the finished process, failure and all.
+
+    With *magic*, git reads the ":(literal)" of ``_literal`` even when the caller's environment
+    turns pathspec magic off.
+    """
     if not shutil.which("git"):
         msg = "git is not on PATH"
         raise GitError(msg)
@@ -24,6 +38,7 @@ def run(root: Path, *args: str, capture: bool = True) -> subprocess.CompletedPro
         capture_output=capture,
         text=True,
         check=False,
+        env={k: v for k, v in os.environ.items() if k != _NO_MAGIC} if magic else None,
     )
 
 
@@ -61,12 +76,13 @@ def require_clean(root: Path) -> None:
 
 def is_tracked(root: Path, path: str) -> bool:
     """Say whether git tracks *path*, so a commit may carry a change to it."""
-    return run(root, "ls-files", "--error-unmatch", "--", path).returncode == 0
+    listed = run(root, "ls-files", "--error-unmatch", "--", _literal(path), magic=True)
+    return listed.returncode == 0
 
 
 def stage(root: Path, package_files: Sequence[str]) -> None:
     """Add *package_files* to the index, and nothing else."""
-    staged = run(root, "add", "--", *package_files)
+    staged = run(root, "add", "--", *map(_literal, package_files), magic=True)
     if staged.returncode != 0:
         msg = f"git add failed: {staged.stderr.strip()}"
         raise GitError(msg)
@@ -89,3 +105,12 @@ def commit(root: Path, package_files: Sequence[str], paragraphs: Sequence[str]) 
             f"and nothing was undone:\n{detail}"
         )
         raise GitError(msg)
+
+
+def _literal(path: str) -> str:
+    """
+    Mark *path* as a file name, never a glob: "app/[id]" must not also match "app/i".
+
+    Per path, not through GIT_LITERAL_PATHSPECS, which the commit hooks would inherit.
+    """
+    return f":(literal){path}"

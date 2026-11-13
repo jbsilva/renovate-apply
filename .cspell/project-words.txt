@@ -31,6 +31,7 @@ numprocesses
 oneline
 osls
 osv
+pathspecs
 pinentry
 poethepoet
 prek
