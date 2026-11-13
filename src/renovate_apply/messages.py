@@ -9,7 +9,7 @@ The prefix is a setting because Renovate's own is: ``commitMessagePrefix: "deps:
 ``semanticCommits`` produce different first words, and a repository has one of them, not both.
 """
 
-lazy from renovate_apply.models import Group
+lazy from renovate_apply.models import Group, Update
 
 
 DEFAULT_PREFIX = "deps:"
@@ -58,10 +58,7 @@ def message(group: Group, prefix: str = DEFAULT_PREFIX) -> list[str]:
 def _summary(group: Group) -> str:
     """Return the subject without its prefix."""
     if len(moves(group)) == 1:
-        only = group.updates[0]
-        if only.digest_only:
-            return f"update the {only.dep_name} digest"
-        return f"update {only.dep_name} to {only.new}"
+        return _summary_of_one(group.updates[0])
 
     directories = group.directories
     if group.managers <= DOCKER_MANAGERS and len(directories) == 1:
@@ -72,3 +69,12 @@ def _summary(group: Group) -> str:
     if group.managers == ACTION_MANAGERS:
         return "update the action pins"
     return f"update {group.branch.removeprefix(BRANCH_PREFIX)}"
+
+
+def _summary_of_one(only: Update) -> str:
+    """Return the subject, without its prefix, of a group that moves one thing."""
+    if only.pins_digest:
+        return f"pin the {only.dep_name} digest"
+    if only.digest_only:
+        return f"update the {only.dep_name} digest"
+    return f"update {only.dep_name} to {only.new}"

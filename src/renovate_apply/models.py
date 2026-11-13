@@ -111,12 +111,19 @@ class Update:
     @property
     def target(self) -> str:
         """Return where the update goes, for display: the new version, or a new digest of it."""
+        if self.pins_digest:
+            return f"{self.new}, digest pinned"
         return f"{self.new}, new digest" if self.digest_only else self.new
 
     @property
     def digest_only(self) -> bool:
         """Say whether the tag stays and only the digest behind it moved."""
         return self.update_type == "digest"
+
+    @property
+    def pins_digest(self) -> bool:
+        """Say whether the version stays and a digest is added beside it."""
+        return self.update_type == "pinDigest"
 
     @property
     def directory(self) -> str:
@@ -126,6 +133,8 @@ class Update:
 
     def describe(self) -> str:
         """Return the one-line "what moved" text used in commit bodies and in the terminal."""
+        if self.pins_digest:
+            return f"{self.current}, digest pinned"
         if self.digest_only:
             return f"{self.current}, new digest"
         return f"{self.current} -> {self.new}"

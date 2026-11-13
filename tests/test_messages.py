@@ -16,6 +16,14 @@ def test_subject_names_the_dependency_when_the_group_holds_one() -> None:
     assert subject(group_of(docker_update())) == "deps: update ghcr.io/atuinsh/atuin to 18.22.0"
 
 
+def test_a_pinned_digest_reads_as_a_pin_not_a_version_move() -> None:
+    """With pinDigests, the version stays and a digest is added, which "v4 -> v4" hides."""
+    update = docker_update(update_type="pinDigest", current_value="v4", new_value="v4")
+    assert subject(group_of(update)) == "deps: pin the ghcr.io/atuinsh/atuin digest"
+    assert update.describe() == "v4, digest pinned"
+    assert update.target == "v4, digest pinned"
+
+
 def test_subject_says_digest_when_only_the_digest_moved() -> None:
     """A tag that stays put would make "to latest" read as a change; it is not one."""
     update = docker_update(update_type="digest", new_value="v18.13.3")
