@@ -162,6 +162,9 @@ Held back:
   serverless-domain-manager -> 11.0.1 (rebased onto renovate/non-major, which was not applied)
 ```
 
+A step also follows a pin or a new digest of the line on another branch, because Renovate rebases it
+in the same way after that merge.
+
 Any other pair of updates to one line on two branches has no order to follow. For example, the major
 comes before the minor in the report, or the second update is a new digest of the current version.
 The first update is applied, and the second is held:

@@ -169,6 +169,9 @@ reason:
 - **`dependencyDashboardApproval` is invisible.** Renovate resolves it per package and the report
   does not carry it, so this tool cannot see which updates your configuration wants approved by
   hand. Holding every major covers the usual case; `--skip` covers the rest.
+- **An update that `packageRules` turns off is applied.** For example, a rule with
+  `matchUpdateTypes: ["digest"]` and `enabled: false` stops Renovate from opening a branch. The
+  report still lists the update with no sign that it is off. Name the dependency in `--skip`.
 - **Lock files: uv and npm only.** A `pyproject.toml` with a `uv.lock` beside it, and a
   `package.json` with a `package-lock.json` beside it, are relocked and committed together. Any
   other lock file, such as `yarn.lock` or `pnpm-lock.yaml`, is left untouched, so run its update

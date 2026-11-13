@@ -69,8 +69,9 @@ rnv --renovate-version 43.224.0
 | `npm`   | Only if a `package.json` you update has a `package-lock.json` beside it. npm comes with Node.js.                                      |
 | `gh`    | Any run, really. It supplies the GitHub token that keeps lookups from being rate limited.                                             |
 
-If `uv` or `npm` is missing when its lock file needs refreshing, the run stops and says so. Pass
-`--no-lock` to skip that step and update the lock file yourself.
+If `uv` or `npm` is missing when its lock file needs refreshing, that group fails and is undone. The
+other groups still run, and the run exits with status 1. Pass `--no-lock` to skip that step and
+update the lock file yourself.
 
 ## From source
 
