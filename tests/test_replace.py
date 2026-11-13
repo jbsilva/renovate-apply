@@ -30,9 +30,16 @@ def test_render_fills_a_plain_name() -> None:
     )
 
 
-def test_render_treats_a_missing_name_as_empty() -> None:
-    """An unknown or null field renders as nothing, the way handlebars reads it."""
-    assert render("a{{missing}}b", {"newValue": None}) == "ab"
+def test_render_treats_a_null_field_as_empty() -> None:
+    """A field the update does not carry a value for renders as nothing, as handlebars reads it."""
+    assert render("a{{newValue}}b", {"newValue": None}) == "ab"
+
+
+@pytest.mark.parametrize("template", ["a{{{datasource}}}b", "{{#if isPinDigest}}a{{/if}}"])
+def test_render_refuses_a_field_it_does_not_know(template: str) -> None:
+    """Renovate fills every field of the update, so an empty guess would write a broken line."""
+    with pytest.raises(ReplaceError, match="does not know"):
+        render(template, {"newValue": None})
 
 
 def test_render_keeps_an_if_block_only_when_the_field_is_set() -> None:

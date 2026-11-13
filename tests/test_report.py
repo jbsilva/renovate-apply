@@ -76,6 +76,14 @@ def test_read_updates_does_not_take_a_python_spelling_for_an_alias() -> None:
     assert [update.aliased_by for update in read_updates(report_for(spelled, normal))] == [(), ()]
 
 
+def test_read_updates_takes_a_custom_manager_template_from_its_file() -> None:
+    """A regex manager sets its template on the package file, and each dependency of it uses it."""
+    report = report_for(docker_update(manager="regex", replace_template=None))
+    entry = report["repositories"]["local"]["packageFiles"]["regex"][0]
+    entry["autoReplaceStringTemplate"] = "{{{depName}}}:{{{newValue}}}"
+    assert read_updates(report)[0].replace_template == "{{{depName}}}:{{{newValue}}}"
+
+
 def test_read_updates_ignores_a_dependency_with_no_name() -> None:
     """A nameless dependency cannot be placed in a file, so it is skipped rather than guessed at."""
     report = report_for(docker_update())

@@ -30,13 +30,17 @@ ones supported:
 | `{{else}}`                     | The other branch of an `if` or `unless`.      |
 
 Blocks nest. The fields a template can name are `depName`, `packageName`, `currentValue`,
-`currentDigest`, `newValue`, `newDigest` and `newName`. A field that is missing or empty counts as
-false, the way handlebars reads it.
+`currentDigest`, `newValue`, `newDigest`, `newName` and `newVersion`. A field that is empty counts
+as false, the way handlebars reads it.
 
-Anything else stops the run:
+A built-in manager sets its template on each dependency. A custom `regex` or `jsonata` manager sets
+its `autoReplaceStringTemplate` on the package file, and every dependency of that file uses it.
+
+Anything else stops the run, another field name included:
 
 ```console
 renovate-apply: unsupported template expression '{{#each deps}}' in ...
+renovate-apply: template names 'datasource', a field this tool does not know: ...
 ```
 
 That is on purpose. A template feature rendered wrong writes a broken version string into a file,
@@ -48,7 +52,7 @@ Two cases give less than a template and a string.
 
 **A string and no template.** Some managers report `replaceString` alone. The new text is then the
 old text with the version and the digest substituted into it, which is Renovate's own fallback. A
-custom regex manager usually lands here:
+custom regex manager with no `autoReplaceStringTemplate` lands here:
 
 ```text
 found       # renovate: depName=zizmor

@@ -46,8 +46,8 @@ def render(template: str, values: Mapping[str, str | None]) -> str:
     Expand a replacement template against the fields of an update.
 
     Supports ``{{name}}``, ``{{{name}}}``, ``{{#if name}}`` and ``{{#unless name}}``, nested, each
-    with an optional ``{{else}}``. A name that is missing or empty counts as false, the way
-    handlebars reads it.
+    with an optional ``{{else}}``. A field that is null or empty counts as false, the way handlebars
+    reads it. A name that is not in *values* raises, because Renovate would have filled it.
     """
     text, end, _ = _render(template, values, 0, None)
     if end != len(template):  # pragma: no cover - _render only stops early on a close tag
@@ -66,6 +66,7 @@ def template_values(update: Update) -> dict[str, str | None]:
         "newValue": update.new_value,
         "newDigest": update.new_digest,
         "newName": update.new_name,
+        "newVersion": update.new_version,
     }
 
 
@@ -266,7 +267,7 @@ def _expand(
     """Expand one token that is not a terminator, returning its text and where to carry on."""
     name = match.group("raw") or match.group("name")
     if name is not None:
-        return values.get(name) or "", position
+        return _value(values, name, template) or "", position
     block = match.group("block")
     if block is not None:
         return _render_block(template, values, position, block, match.group("test"))
@@ -289,5 +290,13 @@ def _render_block(
         if again:
             msg = f"template has two {{{{else}}}} in one block: {template!r}"
             raise ReplaceError(msg)
-    taken = bool(values.get(test)) is (block == "if")
+    taken = bool(_value(values, test, template)) is (block == "if")
     return (body if taken else alternative), position
+
+
+def _value(values: Mapping[str, str | None], name: str, template: str) -> str | None:
+    """Return a field's value, refusing a field this tool does not carry."""
+    if name not in values:
+        msg = f"template names {name!r}, a field this tool does not know: {template!r}"
+        raise ReplaceError(msg)
+    return values[name]

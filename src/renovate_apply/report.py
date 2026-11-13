@@ -327,6 +327,8 @@ class _File:
     aliases: Mapping[str, tuple[str, ...]]
     """The aliases in the file, by the package each one names."""
 
+    template: str | None
+    """A custom manager's ``autoReplaceStringTemplate``, which it sets on the file, not on a dep."""
 
 
 def _iter_file_updates(manager: str, entry: Mapping[str, object]) -> Iterator[Update]:
@@ -341,8 +343,9 @@ def _iter_file_updates(manager: str, entry: Mapping[str, object]) -> Iterator[Up
     )
     deps = _sequence(entry.get("deps"), f"{package_file} deps")
     names = tuple(dict.fromkeys(filter(None, map(_dep_name, deps))))
+    template = _text(entry.get("autoReplaceStringTemplate"))
     aliases = _aliases(deps, python=manager in PYTHON_MANAGERS)
-    where = _File(manager, package_file, lock_files, names, aliases)
+    where = _File(manager, package_file, lock_files, names, aliases, template)
     for dep_index, dep in enumerate(deps):
         if isinstance(dep, Mapping):
             yield from _iter_dep_updates(where, dep, dep_index)
@@ -392,7 +395,7 @@ def _iter_dep_updates(where: _File, dep: Mapping[str, object], dep_index: int) -
             current_digest=_text(dep.get("currentDigest")),
             new_digest=_text(raw.get("newDigest")),
             replace_string=_text(dep.get("replaceString")),
-            replace_template=_text(dep.get("autoReplaceStringTemplate")),
+            replace_template=_text(dep.get("autoReplaceStringTemplate")) or where.template,
             new_name=_text(raw.get("newName")),
             is_security=_flag(raw.get("isVulnerabilityAlert")),
             pending=_flag(raw.get("pendingChecks")),

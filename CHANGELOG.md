@@ -39,6 +39,11 @@ All notable changes to this project are documented here. The format is based on
 - When a regex manager finds two copies of a line and a built-in manager finds only the first, the
   second copy is now updated. Before, it was held as a repeat of the first copy, and it kept its old
   version.
+- A custom `regex` or `jsonata` manager's `autoReplaceStringTemplate` is now used. Renovate reports
+  it on the package file, and this tool read it only on each dependency, so it substituted the
+  version into the old text instead.
+- A template that names a field this tool does not carry, such as `{{{datasource}}}`, now fails its
+  group. Before, the field rendered as empty text, and the edited line lost that part.
 
   that follows its own name. Before, a name elsewhere sent the edit to another dependency's line: in
   a script, inside a longer name such as `@typescript-eslint/parser` for `eslint`, or inside an npm
