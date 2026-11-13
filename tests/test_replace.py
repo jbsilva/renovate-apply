@@ -269,6 +269,25 @@ def test_apply_to_text_edits_text_that_stands_on_its_own(
     assert apply_to_text(text, update) == expected
 
 
+def test_apply_to_text_keeps_a_short_go_digest_short() -> None:
+    """Renovate cuts the 40-character hash to the length the pseudo-version holds."""
+    text = "require example.com/x v0.0.0-20230101120000-abcdef123456\n"
+    update = Update(
+        manager="gomod",
+        package_file="go.mod",
+        dep_name="example.com/x",
+        update_type="digest",
+        branch_name="renovate/x",
+        current_value="v0.0.0-20230101120000-abcdef123456",
+        new_value="v0.0.0-20230101120000-abcdef123456",
+        current_digest="abcdef123456",
+        new_digest="0123456789abcdef0123456789abcdef01234567",
+    )
+    assert (
+        apply_to_text(text, update) == "require example.com/x v0.0.0-20230101120000-0123456789ab\n"
+    )
+
+
 def test_apply_to_text_refuses_text_also_in_a_comment() -> None:
     """A comment that names the image is a second copy the report does not list."""
     text = "# based on node:20\nFROM node:20\n"

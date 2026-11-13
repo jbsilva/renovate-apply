@@ -27,6 +27,8 @@ from renovate_apply.placing import copies, name_key, section_key, whole_copies
 lazy from renovate_apply.models import Update
 
 
+_SHORT_DIGEST_MANAGERS = frozenset({"gomod", "npm"})
+
 # The templates are handlebars, but a replacement template only ever uses these forms. Anything
 # else is a manager this tool has not seen, and it stops rather than write a guess.
 _TOKEN = re.compile(
@@ -166,9 +168,23 @@ def _replacement_string(update: Update, search: str) -> str:
     replacement = search
     if _moves(update.current_value, update.new_value):
         replacement = replacement.replace(str(update.current_value), str(update.new_value))
-    if _moves(update.current_digest, update.new_digest):
-        replacement = replacement.replace(str(update.current_digest), str(update.new_digest))
+    new_digest = _sized_digest(update)
+    if _moves(update.current_digest, new_digest):
+        replacement = replacement.replace(str(update.current_digest), str(new_digest))
     return replacement
+
+
+def _sized_digest(update: Update) -> str | None:
+    """
+    Return the new digest as long as the current one, for the managers whose files hold it short.
+
+    A gomod pseudo-version or an npm git reference keeps a short hash, and Renovate cuts the full
+    one it looked up to that length. Written whole, the pseudo-version is no longer valid.
+    """
+    current, new = update.current_digest, update.new_digest
+    if update.manager in _SHORT_DIGEST_MANAGERS and current and new and len(current) < len(new):
+        return new[: len(current)]
+    return new
 
 
 def _locate(
