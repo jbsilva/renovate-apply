@@ -103,10 +103,12 @@ def report_for(*updates: Update) -> dict[str, Any]:
     for update in updates:
         entry: dict[str, object] = {
             "depName": update.dep_name,
+            "packageName": update.package_name,
             "currentValue": update.current_value,
             "currentDigest": update.current_digest,
             "replaceString": update.replace_string,
             "autoReplaceStringTemplate": update.replace_template,
+            "lockedVersion": update.locked_version,
             "updates": [
                 {
                     "updateType": update.update_type,
@@ -117,10 +119,16 @@ def report_for(*updates: Update) -> dict[str, Any]:
                     "isVulnerabilityAlert": update.is_security,
                     "pendingChecks": update.pending,
                     "isLockfileUpdate": update.is_lockfile_update,
+                    "newVersion": update.new_version,
                 },
             ],
         }
-        _add(package_files.setdefault(update.manager, []), update.package_file, entry)
+        _add(
+            package_files.setdefault(update.manager, []),
+            update.package_file,
+            entry,
+            update.lock_files,
+        )
     return {
         "problems": [],
         "repositories": {
@@ -129,7 +137,12 @@ def report_for(*updates: Update) -> dict[str, Any]:
     }
 
 
-def _add(files: list[dict[str, object]], package_file: str, entry: dict[str, object]) -> None:
+def _add(
+    files: list[dict[str, object]],
+    package_file: str,
+    entry: dict[str, object],
+    lock_files: tuple[str, ...] = (),
+) -> None:
     """Put a dependency under its package file, adding the file the first time it is seen."""
     for existing in files:
         if existing["packageFile"] == package_file:
@@ -137,7 +150,7 @@ def _add(files: list[dict[str, object]], package_file: str, entry: dict[str, obj
             assert isinstance(deps, list)
             deps.append(entry)
             return
-    files.append({"packageFile": package_file, "deps": [entry]})
+    files.append({"packageFile": package_file, "lockFiles": list(lock_files), "deps": [entry]})
 
 
 WORKFLOW = """\
@@ -177,3 +190,23 @@ def wrangler_updates(**overrides: object) -> tuple[Update, Update]:
     }
     fields.update(overrides)
     return action, Update(**fields)
+
+
+def npm_lock_update(**overrides: object) -> Update:
+    """Return an update that moves a dependency inside its range, in package-lock.json only."""
+    fields: dict[str, Any] = {
+        "manager": "npm",
+        "package_file": "package.json",
+        "dep_name": "osls",
+        "update_type": "minor",
+        "branch_name": "renovate/non-major",
+        "current_value": "^4.0.0",
+        "new_value": "^4.0.0",
+        "new_digest": "sha512-abcd",
+        "is_lockfile_update": True,
+        "new_version": "4.5.0",
+        "locked_version": "4.3.1",
+        "lock_files": ("package-lock.json",),
+    }
+    fields.update(overrides)
+    return Update(**fields)

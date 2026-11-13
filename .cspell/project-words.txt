@@ -8,6 +8,7 @@ Dockerfiles
 docstrings
 EDITMSG
 ERESOLVE
+ETARGET
 fontawesome
 frontmatter
 fstrings
@@ -23,6 +24,7 @@ mdformat
 NOSONAR
 numprocesses
 oneline
+osls
 osv
 pinentry
 poethepoet

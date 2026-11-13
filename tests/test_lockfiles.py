@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import npm_lock_update
 
 from renovate_apply.errors import LockError, NoSolutionError
 from renovate_apply.lockfiles import NPM, refresh
@@ -239,3 +240,64 @@ def test_refresh_holds_a_package_json_npm_cannot_resolve(
 
     with pytest.raises(NoSolutionError, match="npm install failed in"):
         refresh(tmp_path, ["package.json"])
+
+
+def test_refresh_fails_an_npm_run_that_only_warned_about_eresolve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A warning about a peer override is not the reason the run failed, so nothing is held."""
+    with_npm_project(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda argv, **_kwargs: subprocess.CompletedProcess(
+            argv, 1, "", "npm warn ERESOLVE overriding peer dependency\nnpm error code ETARGET"
+        ),
+    )
+
+    with pytest.raises(LockError, match="ETARGET") as raised:
+        refresh(tmp_path, ["package.json"])
+    assert not isinstance(raised.value, NoSolutionError)
+
+
+def test_refresh_moves_a_lock_file_update_and_keeps_the_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Npm saves name@version into package.json, so it is put back and npm runs again to match."""
+    with_npm_project(tmp_path)
+    seen: list[tuple[list[str], str]] = []
+
+    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append((argv, (tmp_path / "package.json").read_text(encoding="utf-8")))
+        if argv[-1] == "osls@4.5.0":
+            (tmp_path / "package.json").write_text('{"osls": "^4.5.0"}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert refresh(tmp_path, ["package.json"], [npm_lock_update()]) == ("package-lock.json",)
+    assert seen == [([*NPM.argv, "osls@4.5.0"], "{}\n"), (list(NPM.argv), "{}\n")]
+    assert (tmp_path / "package.json").read_text(encoding="utf-8") == "{}\n"
+
+
+def test_refresh_puts_the_manifest_back_when_a_lock_file_update_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed npm run that already rewrote package.json leaves it as it was."""
+    with_npm_project(tmp_path)
+
+    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        (tmp_path / "package.json").write_text('{"osls": "^4.5.0"}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 1, "", "npm error code ETARGET")
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(LockError, match="ETARGET"):
+        refresh(tmp_path, ["package.json"], [npm_lock_update()])
+    assert (tmp_path / "package.json").read_text(encoding="utf-8") == "{}\n"

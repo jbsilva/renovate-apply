@@ -9,6 +9,7 @@ from helpers import (
     docker_update,
     git,
     hook_update,
+    npm_lock_update,
     report_for,
     run_cli,
     wrangler_updates,
@@ -16,6 +17,7 @@ from helpers import (
 
 from renovate_apply import main as main_module
 from renovate_apply.errors import LockError, NoSolutionError
+from renovate_apply.main import NOTHING_LEFT
 from renovate_apply.models import Update
 from renovate_apply.report import HELD_NO_SOLUTION
 
@@ -377,7 +379,11 @@ def manifest_update(**overrides: object) -> Update:
     return docker_update(**fields)
 
 
-def relocks(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
+def relocks(
+    root: Path,
+    package_files: Sequence[str],
+    _lock_updates: Sequence[Update] = (),
+) -> tuple[str, ...]:
     """Stand in for refresh: rewrite uv.lock the way a successful uv lock would."""
     if "pyproject.toml" not in package_files:
         return ()
@@ -388,7 +394,11 @@ def relocks(root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
 def fails_to_lock(error: LockError) -> object:
     """Stand in for refresh: fail with *error* on the manifest, pass over any other file."""
 
-    def refresh(_root: Path, package_files: Sequence[str]) -> tuple[str, ...]:
+    def refresh(
+        _root: Path,
+        package_files: Sequence[str],
+        _lock_updates: Sequence[Update] = (),
+    ) -> tuple[str, ...]:
         if "pyproject.toml" in package_files:
             raise error
         return ()
@@ -451,6 +461,65 @@ def test_a_group_held_back_alone_leaves_nothing_to_apply(
     assert run_cli(str(repo)) == 0
 
     assert "Nothing to apply." in capsys.readouterr().out
+
+
+def test_commits_a_lock_file_update_with_the_manifest_unchanged(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nothing in package.json moves, so the commit holds package-lock.json alone."""
+    (repo / "package.json").write_text("{}\n", encoding="utf-8")
+    (repo / "package-lock.json").write_text("{}\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add an npm project")
+    moved: list[Update] = []
+
+    def refresh(
+        root: Path,
+        _package_files: Sequence[str],
+        lock_updates: Sequence[Update] = (),
+    ) -> tuple[str, ...]:
+        moved.extend(lock_updates)
+        (root / "package-lock.json").write_text('{"osls": "4.5.0"}\n', encoding="utf-8")
+        return ("package-lock.json",)
+
+    monkeypatch.setattr(main_module, "refresh", refresh)
+    given_report(monkeypatch, npm_lock_update())
+    assert run_cli(str(repo)) == 0
+
+    assert moved == [npm_lock_update()]
+    assert subjects(repo)[2:] == ["deps: update osls to 4.5.0"]
+    files = git(repo, "show", "--name-only", "--pretty=", "HEAD").stdout.split()
+    assert files == ["package-lock.json"]
+
+
+def test_a_group_an_earlier_group_already_made_is_not_a_failure(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A lock file out of step with its manifest is put right by the first group to refresh it."""
+    (repo / "package.json").write_text("{}\n", encoding="utf-8")
+    (repo / "package-lock.json").write_text("{}\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add an npm project")
+
+    def refresh(root: Path, *_args: object) -> tuple[str, ...]:
+        (root / "package-lock.json").write_text('{"fixed": true}\n', encoding="utf-8")
+        return ("package-lock.json",)
+
+    monkeypatch.setattr(main_module, "refresh", refresh)
+    repair = npm_lock_update(
+        dep_name="serverless-domain-manager",
+        update_type="major",
+        branch_name="renovate/serverless-domain-manager-11.x-lockfile",
+        new_version="11.0.0",
+    )
+    given_report(monkeypatch, npm_lock_update(), repair)
+    assert run_cli(str(repo), "--major") == 0
+
+    assert subjects(repo)[2:] == ["deps: update osls to 4.5.0"]
+    assert NOTHING_LEFT in capsys.readouterr().out
 
 
 def test_a_lock_that_fails_for_another_reason_fails_the_group(

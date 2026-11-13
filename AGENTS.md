@@ -23,8 +23,9 @@ branch. Each module owns one slice:
 - `replace.py` - the edit itself: render Renovate's `autoReplaceStringTemplate`, find its
   `replaceString`, swap one for the other. **This is the module where a mistake corrupts a file.**
 - `files.py` - reads and writes the package files, preserving line endings.
-- `lockfiles.py` - runs `uv lock` when an edited `pyproject.toml` has a `uv.lock` beside it, so the
-  manifest and its lock file are committed together, as Renovate's own pull request carries them.
+- `lockfiles.py` - runs the package manager when an edited manifest has its lock file beside it, so
+  the two are committed together, as Renovate's own pull request carries them. It also applies the
+  lock file updates that need no manifest edit. Each package manager is one `Locker`.
 - `messages.py` - the commit subject and body; `git.py` - the clean check, the staging, the commit.
 - `models.py` - `Update`, `Group`, `Held`; `errors.py` - the domain exception hierarchy.
 

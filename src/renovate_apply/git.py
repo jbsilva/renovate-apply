@@ -67,6 +67,15 @@ def stage(root: Path, package_files: Sequence[str]) -> None:
         raise GitError(msg)
 
 
+def has_staged(root: Path) -> bool:
+    """Say whether the index differs from HEAD, which is what a commit needs to be made."""
+    completed = run(root, "diff", "--cached", "--quiet")
+    if completed.returncode not in {0, 1}:
+        msg = f"git diff --cached failed: {completed.stderr.strip()}"
+        raise GitError(msg)
+    return completed.returncode == 1
+
+
 def commit(root: Path, package_files: Sequence[str], paragraphs: Sequence[str]) -> None:
     """
     Stage *package_files* and commit them with *paragraphs* as the message.

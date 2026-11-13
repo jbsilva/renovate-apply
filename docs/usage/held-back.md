@@ -47,9 +47,26 @@ Sometimes the range in the manifest already allows the new version. An npm `^2.4
 `2.49.1`, so nothing in `package.json` changes and only the lock file beside it moves. Renovate
 marks these `isLockfileUpdate`.
 
-There is no text to replace, so there is nothing for this tool to do. Moving the lock file takes
-that package manager. This tool refreshes `uv.lock` and `package-lock.json` only after an edit to
-the manifest beside them. See [Commits and lock files](../how-it-works/commits.md#lock-files).
+There is no text to replace, so moving the lock file takes the package manager. For a
+`package-lock.json` beside the `package.json`, this tool runs npm and applies the update. See
+[Lock file updates with npm](../how-it-works/commits.md#lock-file-updates-with-npm).
+
+An npm alias, such as `"foo": "npm:bar@^1.0.0"`, is also held. To move an alias, npm needs a command
+that names both the alias and the package. This tool does not run that form.
+
+Any other lock file update is held, with this reason:
+
+```console
+Held back:
+  pydantic -> 2.13.1 (a lock file update this tool cannot make, the manifest does not change)
+```
+
+`--no-lock` holds every lock file update, because npm does not run. The reason then names the flag:
+
+```console
+Held back:
+  osls -> 4.5.0 (a lock file update, which --no-lock leaves to you)
+```
 
 ## Updates that do not lock
 

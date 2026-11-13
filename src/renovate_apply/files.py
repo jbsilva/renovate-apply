@@ -32,7 +32,12 @@ def apply_group(root: Path, group: Group, *, write: bool = True) -> tuple[str, .
     edited: list[tuple[Path, str]] = []
     for package_file in group.package_files:
         path = root / package_file
-        mine = [update for update in group.updates if update.package_file == package_file]
+        # A lock file update has no text in the package file; the package manager moves it.
+        mine = [
+            update
+            for update in group.updates
+            if update.package_file == package_file and not update.is_lockfile_update
+        ]
         edited.append((path, apply_all(_read(path), mine)))
     if write:
         for path, text in edited:

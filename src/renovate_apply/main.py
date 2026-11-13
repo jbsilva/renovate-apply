@@ -25,7 +25,7 @@ from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
 from renovate_apply.errors import GitError, LockError, NoSolutionError, RenovateApplyError
 from renovate_apply.files import apply_group, restore, snapshot, split_repeats
-from renovate_apply.git import commit, require_clean, require_repository, stage
+from renovate_apply.git import commit, has_staged, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
@@ -57,6 +57,9 @@ app = App(
 # one line and can be copied out of the scrollback whole.
 out = Console(markup=False, highlight=False, soft_wrap=True)
 err = Console(markup=False, highlight=False, soft_wrap=True, stderr=True)
+
+
+NOTHING_LEFT = "nothing left to commit: an earlier group already made this change"
 
 
 class Mode(Enum):
@@ -127,6 +130,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         groups, held = _plan(
             root,
             major=major,
+            lock=lock,
             committing=mode is Mode.COMMIT,
             skip=skip or [],
             renovate_version=renovate_version,
@@ -161,6 +165,7 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     root: Path,
     *,
     major: bool,
+    lock: bool,
     committing: bool,
     skip: list[str],
     renovate_version: str | None,
@@ -177,7 +182,7 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
         err.print(f"renovate-apply: renovate reported: {problem}", style="yellow")
 
     updates, collisions = split_collisions(read_updates(report))
-    to_apply, held = split(updates, with_major=major, skip=skip)
+    to_apply, held = split(updates, with_major=major, skip=skip, lock=lock)
     held += [Held(update, held_collision(first)) for update, first in collisions]
     to_apply, repeats = split_repeats(root, to_apply)
     held += [Held(update, held_repeat(first)) for update, first in repeats]
@@ -237,7 +242,7 @@ def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: boo
     package_files = apply_group(root, one, write=mode is not Mode.DRY_RUN)
     # The lock file is refreshed before the commit, so the manifest and the lock file that matches
     # it are one commit, which is how Renovate's own pull request carries them.
-    locks = _relock(root, package_files, originals) if lock and mode is not Mode.DRY_RUN else ()
+    locks = _relock(root, one, originals) if lock and mode is not Mode.DRY_RUN else ()
     out.print("would apply  " if mode is Mode.DRY_RUN else "applied  ", style="dim", end="")
     out.print(paragraphs[0], style="bold")
     for name, moved in moves(one):
@@ -247,14 +252,16 @@ def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: boo
     if mode is Mode.STAGE:
         stage(root, [*package_files, *locks])
     elif mode is Mode.COMMIT:
-        commit(root, [*package_files, *locks], paragraphs)
+        stage(root, [*package_files, *locks])
+        # A lock file that did not match its manifest is put right by the first group to refresh
+        # it, which can leave a later group that only asked for that same fix with nothing to add.
+        if has_staged(root):
+            commit(root, [*package_files, *locks], paragraphs)
+        else:
+            out.print(f"    {NOTHING_LEFT}", style="yellow")
 
 
-def _relock(
-    root: Path,
-    package_files: tuple[str, ...],
-    originals: dict[str, str],
-) -> tuple[str, ...]:
+def _relock(root: Path, one: Group, originals: dict[str, str]) -> tuple[str, ...]:
     """
     Refresh the lock files beside the edited manifests, or put the manifests back.
 
@@ -262,7 +269,8 @@ def _relock(
     repository's own lock file hook, long after this run has ended.
     """
     try:
-        return refresh(root, package_files)
+        lock_updates = [update for update in one.updates if update.is_lockfile_update]
+        return refresh(root, one.package_files, lock_updates)
     except LockError:
         restore(root, originals)
         raise

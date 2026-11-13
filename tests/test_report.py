@@ -1,12 +1,13 @@
 """Reading Renovate's report: what it holds, what is held back, and how it groups."""
 
 import pytest
-from helpers import docker_update, hook_update, report_for
+from helpers import docker_update, hook_update, npm_lock_update, report_for
 
 from renovate_apply.errors import ReportError
 from renovate_apply.report import (
     HELD_LOCKFILE,
     HELD_MAJOR,
+    HELD_NO_LOCK,
     HELD_PENDING,
     HELD_RENAME,
     HELD_SKIPPED,
@@ -182,3 +183,42 @@ def test_split_collisions_keeps_updates_of_two_branches() -> None:
     minor = docker_update()
     digest = docker_update(new_value="v18.13.3", branch_name="renovate/atuin-digest")
     assert split_collisions([minor, digest]) == ([minor, digest], [])
+
+
+def test_read_updates_carries_what_a_lock_file_update_needs() -> None:
+    """The version to lock is newVersion, since newValue is the range the manifest keeps."""
+    update = read_updates(report_for(npm_lock_update(package_name="osls")))[0]
+    assert (update.locked_version, update.new_version) == ("4.3.1", "4.5.0")
+    assert update.package_name == "osls"
+    assert update.lock_files == ("package-lock.json",)
+    assert update.describe() == "4.3.1 -> 4.5.0"
+
+
+@pytest.mark.parametrize("package_name", [None, "osls"])
+def test_split_applies_an_npm_lock_file_update(package_name: str | None) -> None:
+    """Npm can move one dependency in package-lock.json, so the update is not held."""
+    update = npm_lock_update(package_name=package_name)
+    assert split([update], with_major=False) == ([update], [])
+
+
+def test_split_holds_a_lock_file_update_with_no_lock() -> None:
+    """--no-lock means the package manager does not run, and nothing else can make the update."""
+    _, held = split([npm_lock_update()], with_major=False, lock=False)
+    assert held[0].reason == HELD_NO_LOCK
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"lock_files": ("yarn.lock",)},
+        {"lock_files": ("other/package-lock.json",)},
+        {"new_version": None},
+        {"manager": "pep621", "package_file": "pyproject.toml", "lock_files": ("uv.lock",)},
+        {"package_name": "@serverless/osls"},
+    ],
+    ids=["yarn", "lock elsewhere", "no version", "uv", "alias"],
+)
+def test_split_holds_a_lock_file_update_npm_cannot_make(overrides: dict[str, object]) -> None:
+    """Only a package-lock.json beside the manifest, with a version to lock, is moved here."""
+    _, held = split([npm_lock_update(**overrides)], with_major=False)
+    assert held[0].reason == HELD_LOCKFILE

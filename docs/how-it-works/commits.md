@@ -98,6 +98,41 @@ alone; run its update yourself.
 
 A manifest in a subdirectory is relocked in that subdirectory, not at the repository root.
 
+The tool looks for the lock file only beside the manifest. In an npm or uv workspace, the members
+share one lock file at the workspace root. An edit to a member then leaves that lock file as it was.
+If your CI installs with `npm ci` or `uv sync --locked`, refresh the root lock file yourself before
+you push.
+
+### Lock file updates with npm
+
+A lock file update moves a dependency to a new version that the range in `package.json` already
+allows. Nothing in `package.json` changes. npm makes the update in three steps:
+
+1. The tool runs the npm command above with `name@version` for each update of the group.
+2. npm also writes the new version into `package.json`, so the tool puts `package.json` back.
+3. The tool runs the plain npm command again. The lock file then matches `package.json` again and
+    keeps the new versions.
+
+The commit holds only `package-lock.json`:
+
+```console
+applied  deps: update non-major
+    osls  4.3.1 -> 4.5.0
+    serverless-domain-manager  10.3.1 -> 10.5.1
+    docker/package-lock.json  refreshed
+```
+
+A lock file that does not match its `package.json` is corrected by the first group that refreshes
+it. A later group that only asked for that same correction then has nothing left to commit. The run
+says so and goes on:
+
+```console
+applied  deps: update serverless-domain-manager to 11.0.0
+    serverless-domain-manager  10.3.1 -> 11.0.0
+    docker/package-lock.json  refreshed
+    nothing left to commit: an earlier group already made this change
+```
+
 If the package manager fails, the group is undone: its manifests and lock files go back to what they
 held before the group. A manifest left edited would otherwise fail the repository's own lock file
 hook at the next commit. When the package manager finds no solution, the group is

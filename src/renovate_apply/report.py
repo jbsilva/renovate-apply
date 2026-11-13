@@ -10,6 +10,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from fnmatch import fnmatchcase
 
 from renovate_apply.errors import ReportError
+from renovate_apply.lockfiles import can_move_in_lock
 from renovate_apply.models import Group, Held, Update
 
 
@@ -20,7 +21,8 @@ HELD_PENDING = "waiting out minimumReleaseAge"
 HELD_MAJOR = "major, use --major to include it"
 HELD_RENAME = "a rename, which this tool does not write"
 HELD_SKIPPED = "skipped by configuration"
-HELD_LOCKFILE = "a lock file update, the manifest does not change"
+HELD_LOCKFILE = "a lock file update this tool cannot make, the manifest does not change"
+HELD_NO_LOCK = "a lock file update, which --no-lock leaves to you"
 # Not decided from the report: main sets it when the lock file finds no solution for the edit.
 HELD_NO_SOLUTION = "the lock file finds no solution for it, see above"
 
@@ -57,6 +59,7 @@ def split(
     *,
     with_major: bool,
     skip: Sequence[str] = (),
+    lock: bool = True,
 ) -> tuple[list[Update], list[Held]]:
     """
     Split the updates into the ones to apply and the ones to hold back, with a reason each.
@@ -67,11 +70,14 @@ def split(
 
     *skip* holds a dependency by name, as a glob. That is the answer to the same blind spot on a
     non-major: a repository that keeps one dependency on the dashboard names it here.
+
+    A lock file update is applied only when *lock* allows the package manager to run and that
+    package manager can move one dependency in its lock file.
     """
     to_apply: list[Update] = []
     held: list[Held] = []
     for update in updates:
-        reason = _hold_reason(update, with_major=with_major, skip=skip)
+        reason = _hold_reason(update, with_major=with_major, skip=skip, lock=lock)
         if reason is None:
             to_apply.append(update)
         else:
@@ -112,20 +118,36 @@ def group(updates: Sequence[Update]) -> list[Group]:
     return [Group(branch, tuple(members)) for branch, members in branches.items()]
 
 
-def _hold_reason(update: Update, *, with_major: bool, skip: Sequence[str]) -> str | None:
+def _hold_reason(
+    update: Update,
+    *,
+    with_major: bool,
+    skip: Sequence[str],
+    lock: bool,
+) -> str | None:
     """Return why this update is not applied, or None when it is."""
     if any(fnmatchcase(update.dep_name, pattern) for pattern in skip):
         return HELD_SKIPPED
     if update.new_name is not None and update.new_name != update.dep_name:
         return HELD_RENAME
-    if update.is_lockfile_update:
-        return HELD_LOCKFILE
+    held_lock = _lock_reason(update, lock=lock)
+    if held_lock is not None:
+        return held_lock
     # A security fix bypasses Renovate's own holds, so it bypasses this one too.
     if update.pending and not update.is_security:
         return HELD_PENDING
     if update.update_type == "major" and not with_major:
         return HELD_MAJOR
     return None
+
+
+def _lock_reason(update: Update, *, lock: bool) -> str | None:
+    """Return why a lock file update is not applied, or None when it is (or is not one)."""
+    if not update.is_lockfile_update:
+        return None
+    if not can_move_in_lock(update):
+        return HELD_LOCKFILE
+    return None if lock else HELD_NO_LOCK
 
 
 def _iter_updates(report: Mapping[str, object]) -> Iterator[Update]:
@@ -145,15 +167,21 @@ def _iter_file_updates(manager: str, entry: Mapping[str, object]) -> Iterator[Up
     package_file = _text(entry.get("packageFile"))
     if package_file is None:
         return
+    lock_files = tuple(
+        found
+        for found in map(_text, _sequence(entry.get("lockFiles"), f"{package_file} lockFiles"))
+        if found
+    )
     for dep in _sequence(entry.get("deps"), f"{package_file} deps"):
         if isinstance(dep, Mapping):
-            yield from _iter_dep_updates(manager, package_file, dep)
+            yield from _iter_dep_updates(manager, package_file, dep, lock_files)
 
 
 def _iter_dep_updates(
     manager: str,
     package_file: str,
     dep: Mapping[str, object],
+    lock_files: tuple[str, ...] = (),
 ) -> Iterator[Update]:
     """Yield one Update per update found for a single dependency."""
     name = _text(dep.get("depName")) or _text(dep.get("packageName"))
@@ -166,6 +194,7 @@ def _iter_dep_updates(
             manager=manager,
             package_file=package_file,
             dep_name=name,
+            package_name=_text(dep.get("packageName")),
             update_type=_text(raw.get("updateType")) or "unknown",
             branch_name=_text(raw.get("branchName")) or "renovate/ungrouped",
             current_value=_text(dep.get("currentValue")),
@@ -178,6 +207,9 @@ def _iter_dep_updates(
             is_security=_flag(raw.get("isVulnerabilityAlert")),
             pending=_flag(raw.get("pendingChecks")),
             is_lockfile_update=_flag(raw.get("isLockfileUpdate")),
+            new_version=_text(raw.get("newVersion")),
+            locked_version=_text(dep.get("lockedVersion")),
+            lock_files=lock_files,
         )
 
 

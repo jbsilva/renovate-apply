@@ -10,8 +10,13 @@ All notable changes to this project are documented here. The format is based on
 
 - A `package.json` with a `package-lock.json` beside it is relocked after an edit, with
   `npm install --package-lock-only --ignore-scripts`, and the two are committed together, as
-  `uv.lock` already was. An `ERESOLVE` conflict holds the group back, like a uv lock with no
-  solution.
+  `uv.lock` already was. A workspace member's lock file at the workspace root is not refreshed. An
+  `ERESOLVE` conflict holds the group back, like a uv lock with no solution.
+- npm lock file updates, which move a dependency inside the range of its `package.json`, are applied
+  with `npm install name@version` instead of held. `package.json` stays as it was. Other lock file
+  updates are still held, and `--no-lock` holds them all.
+- A group with nothing left to commit, because an earlier group of the run already made its change,
+  is reported and passed over instead of failing the run.
 
 ## [0.1.1] - 2026-10-11
 

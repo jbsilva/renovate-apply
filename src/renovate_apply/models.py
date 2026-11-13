@@ -33,6 +33,9 @@ class Update:
     This is what groups updates into one commit.
     """
 
+    package_name: str | None = None
+    """Renovate's ``packageName``: the package to look up, which an npm alias names apart."""
+
     current_value: str | None = None
     new_value: str | None = None
     current_digest: str | None = None
@@ -65,14 +68,31 @@ class Update:
     moves, and that takes the package manager, not a string replacement.
     """
 
+    new_version: str | None = None
+    """
+    Renovate's ``newVersion``: the exact version to lock.
+
+    Differs from ``new_value`` when the manifest holds a range.
+    """
+
+    locked_version: str | None = None
+    """Renovate's ``lockedVersion``: the version the lock file holds now."""
+
+    lock_files: tuple[str, ...] = ()
+    """The lock files Renovate found for the package file, relative to the repository root."""
+
     @property
     def current(self) -> str:
-        """Return what the file says now, for display."""
+        """Return what the file says now, for display; the locked version for a lock update."""
+        if self.is_lockfile_update and self.locked_version:
+            return self.locked_version
         return self.current_value or self.current_digest or "?"
 
     @property
     def new(self) -> str:
-        """Return what the file will say, for display."""
+        """Return what the file will say, for display; the version to lock for a lock update."""
+        if self.is_lockfile_update and self.new_version:
+            return self.new_version
         return self.new_value or self.new_digest or "?"
 
     @property
