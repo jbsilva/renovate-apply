@@ -44,6 +44,8 @@ All notable changes to this project are documented here. The format is based on
   version into the old text instead.
 - A template that names a field this tool does not carry, such as `{{{datasource}}}`, now fails its
   group. Before, the field rendered as empty text, and the edited line lost that part.
+- A `replaceString` with no template that holds the version twice, such as a download URL, now has
+  both copies moved, as Renovate moves them. Before, only the first one moved.
 
   that follows its own name. Before, a name elsewhere sent the edit to another dependency's line: in
   a script, inside a longer name such as `@typescript-eslint/parser` for `eslint`, or inside an npm

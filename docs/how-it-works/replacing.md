@@ -61,6 +61,16 @@ written     # renovate: depName=zizmor
             ZIZMOR_VERSION: 1.30.1
 ```
 
+As in Renovate, every copy of the version in the string moves:
+
+```text
+found       https://example.com/v1.2.3/tool-1.2.3.tgz
+written     https://example.com/v1.2.4/tool-1.2.4.tgz
+```
+
+If your configuration sets `autoReplaceGlobalMatch` to false, the report does not show it, so this
+tool still moves every copy.
+
 **Neither.** The pre-commit, npm and pep621 managers are some of these. The text to look for is then
 the bare version. The tool edits the first copy of it whose closest dependency name before it is
 this dependency's name. The report lists every dependency of the file, so the tool knows all the

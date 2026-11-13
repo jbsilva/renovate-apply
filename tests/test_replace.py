@@ -189,6 +189,21 @@ def test_search_and_replacement_refuses_an_update_with_nothing_to_find() -> None
         search_and_replacement(update)
 
 
+def test_search_and_replacement_substitutes_every_copy_of_the_version() -> None:
+    """With no template, Renovate replaces the version wherever the found text holds it."""
+    update = docker_update(
+        manager="regex",
+        dep_name="tool",
+        replace_string="https://e.com/v1.2.3/tool-1.2.3.tgz",
+        replace_template=None,
+        current_value="1.2.3",
+        new_value="1.2.4",
+        current_digest=None,
+        new_digest=None,
+    )
+    assert search_and_replacement(update)[1] == "https://e.com/v1.2.4/tool-1.2.4.tgz"
+
+
 def test_search_and_replacement_writes_the_package_name_the_template_asks_for() -> None:
     """A regex manager can name a dependency apart from the image it pulls."""
     update = docker_update(

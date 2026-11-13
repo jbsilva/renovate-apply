@@ -157,11 +157,13 @@ def _replacement_string(update: Update, search: str) -> str:
     """Render the template, or substitute the version and the digest into the text found."""
     if update.replace_template:
         return render(update.replace_template, template_values(update))
+    # Every copy, as Renovate's autoReplaceGlobalMatch does by default: a URL can hold the version
+    # twice. A repository that turns it off says so only in its configuration, not in the report.
     replacement = search
     if _moves(update.current_value, update.new_value):
-        replacement = replacement.replace(str(update.current_value), str(update.new_value), 1)
+        replacement = replacement.replace(str(update.current_value), str(update.new_value))
     if _moves(update.current_digest, update.new_digest):
-        replacement = replacement.replace(str(update.current_digest), str(update.new_digest), 1)
+        replacement = replacement.replace(str(update.current_digest), str(update.new_digest))
     return replacement
 
 
