@@ -127,7 +127,10 @@ def _same_edit(
     if one.package_file != other.package_file:
         return False
     if one.package_file not in texts:
-        texts[one.package_file] = _read(root / one.package_file)
+        try:
+            texts[one.package_file] = _read(root / one.package_file)
+        except ReplaceError:
+            return False  # the group that edits this file fails on it, and the others go on
     return same_edit(texts[one.package_file], one, other, uses=(one_use, other_use))
 
 
@@ -146,7 +149,7 @@ def _read(path: Path) -> str:
     """Read a package file, saying which one when it cannot be read."""
     try:
         return path.read_text(encoding=ENCODING, newline="")
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         msg = f"cannot read {path}: {error}"
         raise ReplaceError(msg) from error
 

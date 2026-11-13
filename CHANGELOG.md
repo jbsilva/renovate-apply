@@ -49,6 +49,8 @@ All notable changes to this project are documented here. The format is based on
 - If a group cannot write one of its files, for example a read-only file, the files it already wrote
   are put back. Before, they stayed edited, and the next group that touched them committed the edit
   under its own message.
+- A package file that is not valid UTF-8 now fails only the group that edits it. Before, the run
+  stopped with a traceback, and the groups after it were never tried.
 
   that follows its own name. Before, a name elsewhere sent the edit to another dependency's line: in
   a script, inside a longer name such as `@typescript-eslint/parser` for `eslint`, or inside an npm

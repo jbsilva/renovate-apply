@@ -95,6 +95,17 @@ def test_repeats_of_names_the_first_of_one_edit_found_twice(tmp_path: Path) -> N
     assert repeats_of(tmp_path, [action, other, regex]) == [None, None, action]
 
 
+def test_a_file_that_is_not_utf8_fails_only_the_group_that_edits_it(tmp_path: Path) -> None:
+    """A Latin-1 byte is a fault of that file, reported like any unreadable file."""
+    action, regex = wrangler_updates()
+    path = tmp_path / action.package_file
+    path.parent.mkdir(parents=True)
+    path.write_bytes(WORKFLOW.encode() + b"# calf\xe9\n")
+    assert repeats_of(tmp_path, [action, regex]) == [None, None]
+    with pytest.raises(ReplaceError, match="cannot read"):
+        apply_group(tmp_path, Group(action.branch_name, (action,)))
+
+
 def test_repeats_of_keeps_the_second_use_of_a_text_another_manager_found_once(
     tmp_path: Path,
 ) -> None:
