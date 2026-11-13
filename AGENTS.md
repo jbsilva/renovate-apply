@@ -22,6 +22,8 @@ branch. Each module owns one slice:
   the report's shape, so a shape Renovate changes fails loudly in one place.
 - `replace.py` - the edit itself: render Renovate's `autoReplaceStringTemplate`, find its
   `replaceString`, swap one for the other. **This is the module where a mistake corrupts a file.**
+- `placing.py` - for a manager that reports only a bare version, which copy of it belongs to the
+  dependency. It is part of the edit, so the rule for `replace.py` holds here too.
 - `files.py` - reads and writes the package files, preserving line endings.
 - `lockfiles.py` - runs the package manager when an edited manifest has its lock file beside it, so
   the two are committed together, as Renovate's own pull request carries them. It also applies the

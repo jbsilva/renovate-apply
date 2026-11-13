@@ -11,17 +11,19 @@ Two managers give less than that:
 - Some give a ``replaceString`` and no template. The new text is then the old text with the version
   and the digest substituted, which is Renovate's own fallback.
 - Some give neither, the pre-commit manager among them. The text to look for is then the bare
-  version, and it is looked for after the dependency's name, so a version that two hooks happen to
-  share cannot send the edit to the wrong one.
+  version, and only a copy whose closest dependency name is this one's counts, so a version that
+  two dependencies share cannot send the edit to the wrong one.
 
 A dependency is reported once per use, so the updates of one file are made in order and each one
 searches on from the last, which is what keeps a line used twice from being edited twice over.
 """
 
 import re
+from collections import Counter
 lazy from collections.abc import Mapping, Sequence
 
 from renovate_apply.errors import ReplaceError
+from renovate_apply.placing import copies, name_key, section_key
 lazy from renovate_apply.models import Update
 
 
@@ -113,11 +115,16 @@ def apply_all(text: str, updates: Sequence[Update]) -> str:
     string that really is in the file twice is edited twice, and a repeat with nothing left to find
     is a line this run already updated, not a file that moved underneath the report.
     """
-    resume: dict[tuple[str, str, str], int] = {}
-    for update in updates:
-        search, replacement = search_and_replacement(update)
-        key = (update.dep_name, search, replacement)
-        at = _locate(text, update, search, resume.get(key))
+    planned = [(update, *search_and_replacement(update)) for update in updates]
+    # One key per section, so a search in devDependencies never resumes into peerDependencies.
+    keys = [
+        (name_key(one.dep_name, one.manager), section_key(text, one), search, new)
+        for one, search, new in planned
+    ]
+    edits = Counter(keys)
+    resume: dict[tuple[str, str | None, str, str], int] = {}
+    for (update, search, replacement), key in zip(planned, keys, strict=True):
+        at = _locate(text, update, search, resume.get(key), edits=edits[key])
         if at is None:
             continue
         text = text[:at] + replacement + text[at + len(search) :]
@@ -150,41 +157,46 @@ def _replacement_string(update: Update, search: str) -> str:
     return replacement
 
 
-def _locate(text: str, update: Update, search: str, resume: int | None) -> int | None:
+def _locate(
+    text: str,
+    update: Update,
+    search: str,
+    resume: int | None,
+    *,
+    edits: int = 1,
+) -> int | None:
     """
     Return where the text to replace starts, refusing to guess when it is not there.
 
     *resume* is where the last edit of this same text ended, or None when this is the first of them.
     Once one edit has been made, the text being gone means the repeat has nothing left to do, which
     is None. Not finding it on the first try is a file the report no longer describes.
+
+    A bare version found in more places than *edits*, the updates making this same edit, stops: the
+    report's order is not the file's, so which copy is this update's is a guess.
     """
-    start = _anchor(text, update, resume)
-    if start is None:
-        return None
-    at = text.find(search, start)
+    start = 0 if resume is None else resume
+    if update.replace_string is None:
+        found = copies(text, update, search, start)
+        if resume is None and found and len(found) != edits:
+            msg = (
+                f"{update.dep_name}: {search!r} follows the name {update.dep_name!r} {len(found)} "
+                f"times in {update.package_file}, and this group edits {edits} of them, so it is "
+                "not clear which ones to edit."
+            )
+            raise ReplaceError(msg)
+        at = found[0] if found else -1
+    else:
+        at = text.find(search, start)
     if at >= 0:
         return at
     if resume is not None:
         return None
-    msg = f"{update.dep_name}: {search!r} is not in {update.package_file}. Was it already updated?"
+    where = update.package_file
+    if update.replace_string is None:
+        where = f"{where} after the name {update.dep_name!r}"
+    msg = f"{update.dep_name}: {search!r} is not in {where}. Was it already updated?"
     raise ReplaceError(msg)
-
-
-def _anchor(text: str, update: Update, resume: int | None) -> int | None:
-    """
-    Return where to start looking for the edit of a dependency.
-
-    With no ``replaceString`` the search text is a bare version, so the dependency's name anchors
-    it: the version that belongs to this dependency is the first one after its name. A repeat
-    whose name is not found again after *resume* has nothing left to edit, which is None.
-    """
-    start = 0 if resume is None else resume
-    if update.replace_string is not None:
-        return start
-    found = text.find(update.dep_name, start)
-    if found >= 0:
-        return found
-    return 0 if resume is None else None
 
 
 def _moves(current: str | None, new: str | None) -> bool:

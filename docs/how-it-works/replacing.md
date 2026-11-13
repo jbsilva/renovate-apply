@@ -57,9 +57,10 @@ written     # renovate: depName=zizmor
             ZIZMOR_VERSION: 1.30.1
 ```
 
-**Neither.** The pre-commit manager is one of these. The text to look for is then the bare version,
-and it is looked for *after* the dependency's name in the file. Two hooks pinned to the same rev
-would otherwise be indistinguishable:
+**Neither.** The pre-commit, npm and pep621 managers are some of these. The text to look for is then
+the bare version. The tool edits the first copy of it whose closest dependency name before it is
+this dependency's name. The report lists every dependency of the file, so the tool knows all the
+names. This rule tells apart two hooks pinned to the same rev:
 
 ```yaml
 - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -67,6 +68,41 @@ would otherwise be indistinguishable:
 - repo: https://github.com/crate-ci/typos
   rev: v0.16.5    # this one, because it follows crate-ci/typos
 ```
+
+The same rule keeps an edit of `eslint` away from the range of `@typescript-eslint/parser`, and from
+a script that runs `eslint`. A Python name matches in any case, with `-`, `_` and `.` alike, because
+Renovate reports it in its normal form: `Sphinx` in the file is `sphinx` in the report. Other names
+match exactly, because two Go modules can differ only in case. An npm alias such as
+`"react-17": "npm:react@^17.0.0"`, or a Cargo rename, names its package in its value. That name
+belongs to the alias, not to the package. Some names do not count as another dependency's name: an
+extra such as `redis` in `celery[redis]`, and a name in a URL after a dependency that is not itself
+named by a URL. Keys inside the dependency's own inline table, such as `python` in
+`tomli = { python = "<3.11", version = "^2.0" }`, do not count either. A copy of the version must be
+a whole version: `==4.2` is not the start of `==4.2.11`, and `1.0` is not the end of `0.1.0`.
+
+In a YAML file, the name and the version must be in one list item. In a chart entry that lists
+`- version: 18.1.0` before its `name:`, the version belongs to that entry, not to the entry above.
+
+For npm and Cargo, the copy must also sit in the part of the file that Renovate reports as the
+dependency's `depType`. For npm, that is a key such as `devDependencies` or `pnpm.overrides`. For
+Cargo, it is a table such as `[dev-dependencies]`, `[dependencies.serde]` or
+`[target.'cfg(unix)'.dependencies]`. A key appears once in each part, so this copy is certain,
+whatever order the report lists the parts in. In a `[dependencies.serde]` table, the names in its
+`features` belong to serde.
+
+If the name of the dependency is not in the file, the run stops for that group. Some managers name a
+dependency in a way the file never spells out:
+
+- Maven: `org.slf4j:slf4j-api` is a `groupId` and an `artifactId` in two elements.
+- Gradle: the `kotlin("jvm")` plugin is `org.jetbrains.kotlin.jvm`, and a version catalog entry that
+    uses `version.ref` holds its version under another key.
+- Argo CD: a chart from an OCI `repoURL` is named by the registry and the chart together.
+
+The run also stops if the number of copies that qualify differs from the number the group edits.
+Renovate's report does not follow the file's order, so the tool cannot know which copy is this
+update's. For example, a chart named `redis` at `19.0.1` with a `redis` dependency at `19.0.1` has
+two copies and one update. A version mentioned in a script or a comment after the name can stop an
+update in the same way.
 
 ## When the text is not there
 

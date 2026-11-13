@@ -116,6 +116,7 @@ def report_for(*updates: Update) -> dict[str, Any]:
             "replaceString": update.replace_string,
             "autoReplaceStringTemplate": update.replace_template,
             "lockedVersion": update.locked_version,
+            "depType": update.dep_type,
         }
         where = (update.manager, update.package_file)
         if where not in deps_of:

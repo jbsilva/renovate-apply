@@ -41,6 +41,41 @@ def test_read_updates_keeps_two_dependencies_of_one_file_together() -> None:
     assert [update.package_file for update in updates] == ["stack/compose.yaml"] * 2
 
 
+def test_read_updates_names_the_other_dependencies_of_the_file() -> None:
+    """A bare version is placed by the names around it, so each update carries its neighbors."""
+    second = docker_update(dep_name="postgres", replace_string="postgres:18-alpine@sha256:bbbb")
+    updates = read_updates(report_for(docker_update(), second, hook_update()))
+    neighbors = [update.neighbors for update in updates]
+    assert neighbors == [("postgres",), ("ghcr.io/atuinsh/atuin",), ()]
+
+
+def test_read_updates_tells_a_package_which_aliases_name_it() -> None:
+    """An alias's value holds the package's name, so the package must not take it for its own."""
+    alias = docker_update(
+        manager="npm",
+        package_file="package.json",
+        dep_name="react-17",
+        package_name="react",
+        replace_string=None,
+    )
+    real = replace(alias, dep_name="react", package_name=None)
+    updates = read_updates(report_for(alias, real))
+    assert [update.aliased_by for update in updates] == [(), ("react-17",)]
+
+
+def test_read_updates_does_not_take_a_python_spelling_for_an_alias() -> None:
+    """Renovate gives PyYAML the package name pyyaml, its normal form, not another package."""
+    spelled = docker_update(
+        manager="pep621",
+        package_file="pyproject.toml",
+        dep_name="PyYAML",
+        package_name="pyyaml",
+        replace_string=None,
+    )
+    normal = replace(spelled, dep_name="pyyaml", package_name="pyyaml")
+    assert [update.aliased_by for update in read_updates(report_for(spelled, normal))] == [(), ()]
+
+
 def test_read_updates_ignores_a_dependency_with_no_name() -> None:
     """A nameless dependency cannot be placed in a file, so it is skipped rather than guessed at."""
     report = report_for(docker_update())

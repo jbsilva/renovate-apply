@@ -13,6 +13,7 @@ from fnmatch import fnmatchcase
 from renovate_apply.errors import ReplaceError, ReportError
 from renovate_apply.lockfiles import can_move_in_lock, lock_file_of
 from renovate_apply.models import Group, Held, Update
+from renovate_apply.placing import PYTHON_MANAGERS, same_python_name
 from renovate_apply.replace import search_and_replacement
 
 
@@ -315,6 +316,19 @@ def _iter_updates(report: Mapping[str, object]) -> Iterator[Update]:
                 yield from _iter_file_updates(str(manager), entry)
 
 
+@dataclass(frozen=True, slots=True)
+class _File:
+    """What a package file says about all of its dependencies."""
+
+    manager: str
+    path: str
+    lock_files: tuple[str, ...]
+    names: tuple[str, ...]
+    aliases: Mapping[str, tuple[str, ...]]
+    """The aliases in the file, by the package each one names."""
+
+
+
 def _iter_file_updates(manager: str, entry: Mapping[str, object]) -> Iterator[Update]:
     """Yield one Update per update found in a single package file."""
     package_file = _text(entry.get("packageFile"))
@@ -325,28 +339,50 @@ def _iter_file_updates(manager: str, entry: Mapping[str, object]) -> Iterator[Up
         for found in map(_text, _sequence(entry.get("lockFiles"), f"{package_file} lockFiles"))
         if found
     )
-    for dep_index, dep in enumerate(_sequence(entry.get("deps"), f"{package_file} deps")):
+    deps = _sequence(entry.get("deps"), f"{package_file} deps")
+    names = tuple(dict.fromkeys(filter(None, map(_dep_name, deps))))
+    aliases = _aliases(deps, python=manager in PYTHON_MANAGERS)
+    where = _File(manager, package_file, lock_files, names, aliases)
+    for dep_index, dep in enumerate(deps):
         if isinstance(dep, Mapping):
-            yield from _iter_dep_updates(manager, package_file, dep, lock_files, dep_index)
+            yield from _iter_dep_updates(where, dep, dep_index)
 
 
-def _iter_dep_updates(
-    manager: str,
-    package_file: str,
-    dep: Mapping[str, object],
-    lock_files: tuple[str, ...] = (),
-    dep_index: int | None = None,
-) -> Iterator[Update]:
+def _aliases(deps: Sequence[object], *, python: bool) -> dict[str, tuple[str, ...]]:
+    """
+    Return each aliased package's aliases: an npm alias or a Cargo rename names another.
+
+    A *python* name whose package name is only its normal form, PyYAML for pyyaml, is no alias.
+    """
+    found: dict[str, list[str]] = {}
+    for dep in deps:
+        name = _dep_name(dep)
+        package = _text(dep.get("packageName")) if isinstance(dep, Mapping) else None
+        if name is None or package is None or package == name:
+            continue
+        if not (python and same_python_name(name, package)):
+            found.setdefault(package, []).append(name)
+    return {package: tuple(names) for package, names in found.items()}
+
+
+def _dep_name(dep: object) -> str | None:
+    """Return the name a dependency goes by in its file, or None when it has none."""
+    if not isinstance(dep, Mapping):
+        return None
+    return _text(dep.get("depName")) or _text(dep.get("packageName"))
+
+
+def _iter_dep_updates(where: _File, dep: Mapping[str, object], dep_index: int) -> Iterator[Update]:
     """Yield one Update per update found for a single dependency."""
-    name = _text(dep.get("depName")) or _text(dep.get("packageName"))
+    name = _dep_name(dep)
     if name is None:
         return
     for raw in _sequence(dep.get("updates"), f"{name} updates"):
         if not isinstance(raw, Mapping):
             continue
         yield Update(
-            manager=manager,
-            package_file=package_file,
+            manager=where.manager,
+            package_file=where.path,
             dep_name=name,
             package_name=_text(dep.get("packageName")),
             update_type=_text(raw.get("updateType")) or "unknown",
@@ -363,7 +399,10 @@ def _iter_dep_updates(
             is_lockfile_update=_flag(raw.get("isLockfileUpdate")),
             new_version=_text(raw.get("newVersion")),
             locked_version=_text(dep.get("lockedVersion")),
-            lock_files=lock_files,
+            lock_files=where.lock_files,
+            dep_type=_text(dep.get("depType")),
+            neighbors=tuple(other for other in where.names if other != name),
+            aliased_by=where.aliases.get(name, ()),
             dep_index=dep_index,
         )
 

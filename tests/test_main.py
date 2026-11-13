@@ -444,10 +444,14 @@ def test_two_lines_of_one_dependency_on_two_branches_are_both_edited(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The same range in devDependencies and peerDependencies is two lines, not two steps."""
+    """
+    The same range in devDependencies and peerDependencies is two lines, not two steps.
+
+    Renovate lists devDependencies first whatever the file's order, so each goes by its depType.
+    """
     manifest = repo / "package.json"
     manifest.write_text(
-        '{"devDependencies": {"react": "^18.2.0"}, "peerDependencies": {"react": "^18.2.0"}}\n',
+        '{"peerDependencies": {"react": "^18.2.0"}, "devDependencies": {"react": "^18.2.0"}}\n',
         encoding="utf-8",
     )
     git(repo, "add", "-A")
@@ -460,20 +464,22 @@ def test_two_lines_of_one_dependency_on_two_branches_are_both_edited(
         branch_name="renovate/major-dev-dependencies",
         current_value="^18.2.0",
         new_value="^19.0.0",
+        dep_type="devDependencies",
         dep_index=0,
     )
     peer = replace(
         dev,
         branch_name="renovate/react-19.x",
         new_value="^18.2.0 || ^19.0.0",
+        dep_type="peerDependencies",
         dep_index=1,
     )
     given_report(monkeypatch, dev, peer)
     assert run_cli(str(repo), "--major", "--no-lock") == 0
 
     assert manifest.read_text(encoding="utf-8") == (
-        '{"devDependencies": {"react": "^19.0.0"}, '
-        '"peerDependencies": {"react": "^18.2.0 || ^19.0.0"}}\n'
+        '{"peerDependencies": {"react": "^18.2.0 || ^19.0.0"}, '
+        '"devDependencies": {"react": "^19.0.0"}}\n'
     )
 
 

@@ -81,6 +81,15 @@ class Update:
     lock_files: tuple[str, ...] = ()
     """The lock files Renovate found for the package file, relative to the repository root."""
 
+    dep_type: str | None = field(default=None, compare=False, repr=False)
+    """Renovate's ``depType``: for npm, the package.json key the dependency is listed under."""
+
+    neighbors: tuple[str, ...] = field(default=(), compare=False, repr=False)
+    """The names of the other dependencies in the same package file, as the report lists them."""
+
+    aliased_by: tuple[str, ...] = field(default=(), compare=False, repr=False)
+    """The neighbors that are aliases of this package, whose value names it."""
+
     dep_index: int | None = field(default=None, compare=False)
     """
     Where the dependency sits in its package file's list in the report: one line of the file.

@@ -1,9 +1,12 @@
 """The replacement engine: rendering Renovate's templates and finding what to swap."""
 
+from dataclasses import replace
+
 import pytest
 from helpers import WORKFLOW, docker_update, hook_update, wrangler_updates
 
 from renovate_apply.errors import ReplaceError
+from renovate_apply.models import Update
 from renovate_apply.replace import (
     apply_all,
     apply_to_text,
@@ -219,6 +222,146 @@ def test_apply_to_text_anchors_a_bare_version_on_the_dependency_name() -> None:
     assert "typos\n    rev: v0.16.9" in updated
 
 
+def _npm_update(name: str, neighbors: tuple[str, ...]) -> Update:
+    """Return a package.json range update, which the npm manager reports without a string."""
+    return Update(
+        manager="npm",
+        package_file="package.json",
+        dep_name=name,
+        update_type="major",
+        branch_name=f"renovate/major-{name}",
+        current_value="^8.0.0",
+        new_value="^9.0.0",
+        neighbors=neighbors,
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "name", "neighbors", "expected"),
+    [
+        pytest.param(
+            '"lint": "eslint ."\n"@typescript-eslint/parser": "^8.0.0",\n"eslint": "^8.0.0"\n',
+            "eslint",
+            ("@typescript-eslint/parser",),
+            '"lint": "eslint ."\n"@typescript-eslint/parser": "^8.0.0",\n"eslint": "^9.0.0"\n',
+            id="name-in-a-script",
+        ),
+        pytest.param(
+            '"@types/react": "^8.0.0",\n"react": "^8.0.0"\n',
+            "react",
+            ("@types/react",),
+            '"@types/react": "^8.0.0",\n"react": "^9.0.0"\n',
+            id="name-inside-a-longer-name",
+        ),
+    ],
+)
+def test_apply_to_text_places_a_bare_version_by_the_closest_dependency_name(
+    text: str,
+    name: str,
+    neighbors: tuple[str, ...],
+    expected: str,
+) -> None:
+    """A version that follows another dependency's name is that dependency's, not this one's."""
+    assert apply_to_text(text, _npm_update(name, neighbors)) == expected
+
+
+def test_apply_to_text_finds_a_python_name_written_apart_from_its_normal_form() -> None:
+    """Renovate reports Sphinx as sphinx and pytest_cov as pytest-cov, as pip compares them."""
+    text = 'docs = ["Sphinx>=7.2"]\ndev = ["pytest_cov>=7.2"]\n'
+    update = replace(
+        _npm_update("pytest-cov", ("sphinx",)),
+        manager="pep621",
+        package_file="pyproject.toml",
+        current_value=">=7.2",
+        new_value=">=8.1",
+    )
+    assert apply_to_text(text, update) == 'docs = ["Sphinx>=7.2"]\ndev = ["pytest_cov>=8.1"]\n'
+
+
+def test_apply_to_text_lets_an_alias_keep_the_package_it_names() -> None:
+    """In "react-17": "npm:react@^8.0.0", the react inside the value is the alias's own."""
+    text = '"react": "^18.2.0",\n"react-17": "npm:react@^8.0.0"\n'
+    update = replace(_npm_update("react-17", ("react",)), package_name="react")
+    assert apply_to_text(text, update) == '"react": "^18.2.0",\n"react-17": "npm:react@^9.0.0"\n'
+
+
+def test_apply_to_text_keeps_case_apart_outside_python_names() -> None:
+    """Two Go modules that differ only in case are two dependencies, each with its own line."""
+    text = (
+        "require github.com/Sirupsen/logrus v1.9.0\n"
+        "replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.9.0\n"
+    )
+    update = replace(
+        _npm_update("github.com/sirupsen/logrus", ("github.com/Sirupsen/logrus",)),
+        manager="gomod",
+        package_file="go.mod",
+        current_value="v1.9.0",
+        new_value="v1.9.3",
+    )
+    assert apply_to_text(text, update) == (
+        "require github.com/Sirupsen/logrus v1.9.0\n"
+        "replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.9.3\n"
+    )
+
+
+def test_apply_to_text_lets_an_alias_keep_a_package_name_that_holds_another() -> None:
+    """In "react-dom-17": "npm:react-dom@...", neither react nor react-dom claims the version."""
+    text = '"react": "^18.2.0",\n"react-dom": "^18.2.0",\n"react-dom-17": "npm:react-dom@^8.0.0"\n'
+    update = replace(_npm_update("react-dom-17", ("react", "react-dom")), package_name="react-dom")
+    assert apply_to_text(text, update).endswith('"react-dom-17": "npm:react-dom@^9.0.0"\n')
+
+
+def test_apply_to_text_leaves_an_alias_that_names_the_package_alone() -> None:
+    """An alias earlier in the file holds the package's name in its value, not the package."""
+    text = '"types-react-17": "npm:@types/react@^8.0.0",\n"@types/react": "^8.0.0"\n'
+    update = replace(
+        _npm_update("@types/react", ("types-react-17",)), aliased_by=("types-react-17",)
+    )
+    assert apply_to_text(text, update) == (
+        '"types-react-17": "npm:@types/react@^8.0.0",\n"@types/react": "^9.0.0"\n'
+    )
+
+
+def test_apply_to_text_lets_an_alias_keep_its_npm_prefix() -> None:
+    """An engines entry named npm is a dependency too, and the npm: of an alias is not it."""
+    text = '"react-17": "npm:react@^8.0.0",\n"engines": {"npm": ">=9"}\n'
+    update = replace(_npm_update("react-17", ("npm",)), package_name="react")
+    assert apply_to_text(text, update).startswith('"react-17": "npm:react@^9.0.0"')
+
+
+def test_apply_to_text_lets_a_cargo_rename_keep_the_package_it_names() -> None:
+    """A rename's value names its package after the key, and that name is the rename's own."""
+    text = 'rand07 = { package = "rand", version = "0.7.3" }\n'
+    update = replace(
+        _npm_update("rand07", ("rand",)),
+        manager="cargo",
+        package_file="Cargo.toml",
+        package_name="rand",
+        current_value="0.7.3",
+        new_value="0.7.4",
+    )
+    assert apply_to_text(text, update) == 'rand07 = { package = "rand", version = "0.7.4" }\n'
+
+
+def test_apply_to_text_takes_two_spellings_of_one_python_package_as_one_name() -> None:
+    """typing_extensions and typing-extensions are one package, so neither blocks the other."""
+    text = 'a = ["typing_extensions>=4.5"]\nb = ["typing-extensions>=4.12"]\n'
+    update = replace(
+        _npm_update("typing_extensions", ("typing-extensions",)),
+        manager="pep621",
+        package_file="pyproject.toml",
+        current_value=">=4.5",
+        new_value=">=4.6",
+    )
+    assert apply_to_text(text, update).startswith('a = ["typing_extensions>=4.6"]')
+
+
+def test_apply_to_text_refuses_a_bare_version_when_the_name_is_not_in_the_file() -> None:
+    """With no name to place it by, the first copy of the version could be anyone's."""
+    with pytest.raises(ReplaceError, match="after the name 'eslint'"):
+        apply_to_text('"prettier": "^8.0.0"\n', _npm_update("eslint", ("prettier",)))
+
+
 def test_apply_to_text_says_so_when_the_text_has_already_moved() -> None:
     """A file that no longer holds what the report described is never rewritten on a guess."""
     update = docker_update()
@@ -319,7 +462,10 @@ def test_apply_all_repeated_hook_anchors_past_other_hooks_on_the_same_rev() -> N
         "  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.16.5\n"
     )
     ruff = hook_update(
-        dep_name="astral-sh/ruff-pre-commit", current_value="v0.16.5", new_value="v0.16.9"
+        dep_name="astral-sh/ruff-pre-commit",
+        current_value="v0.16.5",
+        new_value="v0.16.9",
+        neighbors=("crate-ci/typos",),
     )
     updated = apply_all(text, [ruff, ruff])
     assert "typos\n    rev: v0.16.5" in updated
