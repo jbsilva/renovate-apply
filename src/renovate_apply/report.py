@@ -34,7 +34,7 @@ def held_repeat(first: Update) -> str:
 
 def held_collision(first: Update) -> str:
     """Return why a collision with *first* is held: Renovate's branch carries *first* instead."""
-    return f"{first.branch_name} updates the same text to {first.new}"
+    return f"{first.branch_name} updates the same text to {first.target}"
 
 
 def problems(report: Mapping[str, object]) -> list[str]:

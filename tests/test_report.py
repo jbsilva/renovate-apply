@@ -12,6 +12,7 @@ from renovate_apply.report import (
     HELD_RENAME,
     HELD_SKIPPED,
     group,
+    held_collision,
     problems,
     read_updates,
     split,
@@ -170,6 +171,14 @@ def test_split_collisions_keeps_the_first_of_two_updates_to_one_use() -> None:
     kept, collisions = split_collisions([minor, hook_update(), digest])
     assert kept == [minor, hook_update()]
     assert collisions == [(digest, minor)]
+
+
+def test_held_collision_names_a_digest_as_a_digest() -> None:
+    """The tag of a digest update is the one the file holds, so on its own it reads as no change."""
+    digest = docker_update(update_type="digest", new_value="v18.13.3", new_digest="sha256:dddd")
+    assert held_collision(digest) == (
+        "renovate/stack-images updates the same text to v18.13.3, new digest"
+    )
 
 
 def test_split_collisions_keeps_two_uses_that_reach_the_same_value() -> None:

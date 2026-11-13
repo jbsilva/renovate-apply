@@ -121,7 +121,7 @@ This tool does the same, and lists the dropped one:
 
 ```console
 Held back:
-  docker -> 29.8.2-cli (renovate/stack-images updates the same text to 29.9.0-cli)
+  docker -> 29.8.2-cli, new digest (renovate/stack-images updates the same text to 29.9.0-cli)
 ```
 
 ## Anything named in `--skip`

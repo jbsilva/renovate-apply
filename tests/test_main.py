@@ -350,7 +350,7 @@ def test_a_version_and_a_digest_of_one_image_in_one_branch_is_the_version(
 
     assert subjects(repo)[1:] == ["deps: update ghcr.io/atuinsh/atuin to 18.22.0"]
     held = "renovate/stack-images updates the same text to 18.22.0"
-    assert f"ghcr.io/atuinsh/atuin -> v18.13.3 ({held})" in capsys.readouterr().out
+    assert f"ghcr.io/atuinsh/atuin -> v18.13.3, new digest ({held})" in capsys.readouterr().out
 
 
 def with_manifest(repo: Path) -> None:

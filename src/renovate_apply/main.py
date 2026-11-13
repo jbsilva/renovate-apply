@@ -281,7 +281,7 @@ def _report_held(held: list[Held]) -> None:
     if not held:
         return
     lines = dict.fromkeys(
-        f"  {one.update.dep_name} -> {one.update.new} ({one.reason})" for one in held
+        f"  {one.update.dep_name} -> {one.update.target} ({one.reason})" for one in held
     )
     out.print("\nHeld back:", style="bold")
     for line in lines:

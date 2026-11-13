@@ -96,6 +96,11 @@ class Update:
         return self.new_value or self.new_digest or "?"
 
     @property
+    def target(self) -> str:
+        """Return where the update goes, for display: the new version, or a new digest of it."""
+        return f"{self.new}, new digest" if self.digest_only else self.new
+
+    @property
     def digest_only(self) -> bool:
         """Say whether the tag stays and only the digest behind it moved."""
         return self.update_type == "digest"
