@@ -28,7 +28,7 @@ from renovate_apply.config import repository_defaults
 from renovate_apply.errors import GitError, LockError, NoSolutionError, RenovateApplyError
 from renovate_apply.files import apply_group, repeats_of, restore, snapshot
 from renovate_apply.git import commit, is_tracked, require_clean, require_repository, stage
-from renovate_apply.lockfiles import refresh
+from renovate_apply.lockfiles import maintain, maintenance_targets, refresh
 from renovate_apply.messages import DEFAULT_PREFIX, body, message
 from renovate_apply.models import Held
 from renovate_apply.report import (
@@ -38,6 +38,7 @@ from renovate_apply.report import (
     held_collision,
     held_rebased,
     held_repeat,
+    package_files,
     problems,
     read_updates,
     split,
@@ -85,6 +86,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     stage_each: Annotated[bool, Parameter(name="--stage")] = False,
     major: bool = False,
     lock: bool = True,
+    lock_maintenance: bool = False,
     skip: list[str] | None = None,
     prefix: str = DEFAULT_PREFIX,
     renovate_version: str | None = None,
@@ -113,6 +115,10 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         ``package-lock.json`` for ``package.json``, and commit the two together. A group the package
         manager finds no solution for is undone and held back.
         ``--no-lock`` leaves the lock file to you.
+    lock_maintenance
+        After the groups, move every dependency in each lock file to the newest version its
+        manifest allows, in one more commit, as Renovate's lock file maintenance does. The report
+        does not say whether the repository's configuration turns it on, so this asks.
     skip
         Hold a dependency back by name, as a glob, repeatable. This is how a repository keeps a
         dependency that its Renovate configuration sends to the dependency dashboard, which the
@@ -131,7 +137,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     root = directory.resolve()
     mode = _mode(dry_run=dry_run, commit_each=commit_each, stage_each=stage_each)
     try:
-        groups, held = _plan(
+        groups, held, found = _plan(
             root,
             major=major,
             lock=lock,
@@ -145,14 +151,16 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
         raise SystemExit(1) from error
     run = _Run(root, prefix, mode, lock=lock, drafts={} if mode is Mode.DRY_RUN else None)
     outcome = _perform(run, groups)
+    total, failed = len(groups), len(outcome.failed)
+    applied = total - len(outcome.missing) - outcome.empty
+    if lock_maintenance and lock and not outcome.stopped:
+        result = _maintain(run, found)
+        total += result is not _Maintenance.NOTHING
+        applied += result is _Maintenance.APPLIED
+        failed += result is _Maintenance.FAILED
     _report_held([*held, *outcome.held])
-    _report_outcome(
-        total=len(groups),
-        failed=len(outcome.failed),
-        applied=len(groups) - len(outcome.missing) - outcome.empty,
-        mode=mode,
-    )
-    if outcome.failed:
+    _report_outcome(total=total, failed=failed, applied=applied, mode=mode)
+    if failed:
         raise SystemExit(1)
 
 
@@ -174,8 +182,12 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     skip: list[str],
     renovate_version: str | None,
     token: str | None,
-) -> tuple[list[Group], list[Held]]:
-    """Check the working copy, run the scan, and return what to do with what came back."""
+) -> tuple[list[Group], list[Held], list[tuple[str, str]]]:
+    """
+    Check the working copy, run the scan, and return what to do with what came back.
+
+    Returns the groups to apply, the updates held back, and every package file with its manager.
+    """
     require_repository(root)
     if committing:
         require_clean(root)
@@ -199,7 +211,7 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
         if first is not None and id(update) not in collided
     ]
     held += [Held(update, held_collision(first)) for update, first in superseded]
-    return group(rebased, order), held
+    return group(rebased, order), held, package_files(report)
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +237,9 @@ class _Outcome:
 
     empty: int = 0
     """The groups that changed no file, so there was nothing to commit."""
+
+    stopped: bool = False
+    """Whether git failed, which stops the run."""
 
     def fail(self, groups: list[Group]) -> None:
         """Count *groups* as failed."""
@@ -268,6 +283,7 @@ def _perform(run: _Run, groups: list[Group]) -> _Outcome:
             err.print(f"renovate-apply: {error}", style="red")
             outcome.fail([one])
             if isinstance(error, GitError):
+                outcome.stopped = True
                 outcome.fail(_stop(groups[index + 1 :]))
                 break
         else:
@@ -336,6 +352,50 @@ def _relock(root: Path, one: Group, originals: dict[str, str]) -> tuple[str, ...
     except LockError:
         restore(root, originals)
         raise
+
+
+class _Maintenance(Enum):
+    """What lock file maintenance came to."""
+
+    NOTHING = "no lock file to maintain"
+    UNCHANGED = "every lock file is up to date"
+    APPLIED = "applied"
+    FAILED = "failed"
+
+
+def _maintain(run: _Run, found: list[tuple[str, str]]) -> _Maintenance:
+    """Run lock file maintenance as one more group, after the others, and say what came of it."""
+    subject = f"{run.prefix} lock file maintenance".strip()
+    tracked = partial(is_tracked, run.root)
+    targets = maintenance_targets(run.root, found, tracked=tracked)
+    if not targets:
+        return _Maintenance.NOTHING
+    if run.mode is Mode.DRY_RUN:
+        _announce_maintenance("would apply  ", subject, targets)
+        return _Maintenance.APPLIED
+    try:
+        changed = maintain(run.root, found, tracked=tracked)
+        if not changed:
+            _announce_maintenance("unchanged  ", subject, ())
+            out.print(f"    {_Maintenance.UNCHANGED.value}", style="yellow")
+            return _Maintenance.UNCHANGED
+        _announce_maintenance("applied  ", subject, changed)
+        if run.mode is Mode.STAGE:
+            stage(run.root, changed)
+        elif run.mode is Mode.COMMIT:
+            commit(run.root, changed, [subject])
+    except RenovateApplyError as error:
+        err.print(f"renovate-apply: lock file maintenance: {error}", style="red")
+        return _Maintenance.FAILED
+    return _Maintenance.APPLIED
+
+
+def _announce_maintenance(verb: str, subject: str, lock_files: tuple[str, ...]) -> None:
+    """Print what lock file maintenance did, one lock file per line."""
+    out.print(verb, style="dim", end="")
+    out.print(subject, style="bold")
+    for lock_file in lock_files:
+        out.print(f"    {lock_file}  upgraded", style="dim")
 
 
 def _report_held(held: list[Held]) -> None:

@@ -8,7 +8,7 @@ import pytest
 from helpers import npm_lock_update
 
 from renovate_apply.errors import LockError, NoSolutionError
-from renovate_apply.lockfiles import NPM, refresh
+from renovate_apply.lockfiles import NPM, UV, maintain, maintenance_targets, refresh
 
 
 def relocked(argv: list[str], cwd: object) -> subprocess.CompletedProcess[str]:
@@ -365,3 +365,69 @@ def test_refresh_pins_a_uv_lock_file_update_in_one_run(
     assert refresh(tmp_path, ["pyproject.toml"], [update]) == ("uv.lock",)
     assert seen == [["uv", "lock", "--upgrade-package", "pyjwt==2.15.0"]]
     assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == "[project]\n"
+
+
+def with_uv_project(root: Path) -> None:
+    """Write a pyproject.toml with a uv.lock beside it."""
+    (root / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    (root / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+
+
+def test_maintain_upgrades_each_lock_file_and_keeps_the_manifests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every dependency moves inside its range, so neither manifest changes."""
+    with_uv_project(tmp_path)
+    with_npm_project(tmp_path)
+    seen: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(argv)
+        if argv[0] == "npm":
+            (tmp_path / "package.json").write_text('{"saved": true}\n', encoding="utf-8")
+        return relocked(argv, kwargs.get("cwd"))
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+    found = [("pep621", "pyproject.toml"), ("npm", "package.json")]
+
+    assert maintain(tmp_path, found) == ("uv.lock", "package-lock.json")
+    assert seen == [list(UV.upgrade), list(NPM.upgrade)]
+    assert seen[0] == ["uv", "lock", "--upgrade"]
+    assert "--no-save" in seen[1]
+    assert (tmp_path / "package.json").read_text(encoding="utf-8") == "{}\n"
+
+
+def test_maintain_leaves_a_manifest_another_manager_found(tmp_path: Path) -> None:
+    """A pyproject.toml that Poetry reads has no uv.lock for uv to upgrade."""
+    with_uv_project(tmp_path)
+    assert maintenance_targets(tmp_path, [("poetry", "pyproject.toml")]) == ()
+
+
+def test_maintain_leaves_alone_a_lock_file_git_does_not_track(tmp_path: Path) -> None:
+    """An ignored lock file is no part of any commit."""
+    with_uv_project(tmp_path)
+    found = [("pep621", "pyproject.toml")]
+    assert maintenance_targets(tmp_path, found, tracked=lambda _path: False) == ()
+
+
+def test_maintain_puts_every_lock_file_back_when_one_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock file already upgraded is not left behind by the next one failing."""
+    with_uv_project(tmp_path)
+    with_npm_project(tmp_path)
+
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv[0] == "npm":
+            return subprocess.CompletedProcess(argv, 1, "", "npm error code E404")
+        return relocked(argv, kwargs.get("cwd"))
+
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(subprocess, "run", run)
+
+    with pytest.raises(LockError, match="npm update failed"):
+        maintain(tmp_path, [("pep621", "pyproject.toml"), ("npm", "package.json")])
+    assert (tmp_path / "uv.lock").read_text(encoding="utf-8") == "version = 1\n"

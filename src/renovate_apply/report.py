@@ -63,6 +63,17 @@ def read_updates(report: Mapping[str, object]) -> list[Update]:
     return list(_iter_updates(report))
 
 
+def package_files(report: Mapping[str, object]) -> list[tuple[str, str]]:
+    """Return each package file Renovate found, with the manager that found it."""
+    found: list[tuple[str, str]] = []
+    for manager, files in _package_files(report).items():
+        for entry in _sequence(files, f"packageFiles.{manager}"):
+            path = _text(entry.get("packageFile")) if isinstance(entry, Mapping) else None
+            if path:
+                found.append((str(manager), path))
+    return found
+
+
 def split(
     updates: Sequence[Update],
     *,
@@ -305,11 +316,7 @@ def _lock_reason(update: Update, *, lock: bool, tracked: Callable[[str], bool]) 
 
 def _iter_updates(report: Mapping[str, object]) -> Iterator[Update]:
     """Walk manager, package file, dependency and update, yielding one Update per update."""
-    package_files = _repository(report).get("packageFiles")
-    if not isinstance(package_files, Mapping):
-        msg = "the report holds no packageFiles; renovate found nothing to read"
-        raise ReportError(msg)
-    for manager, files in package_files.items():
+    for manager, files in _package_files(report).items():
         for entry in _sequence(files, f"packageFiles.{manager}"):
             if isinstance(entry, Mapping):
                 yield from _iter_file_updates(str(manager), entry)
@@ -406,6 +413,15 @@ def _iter_dep_updates(where: _File, dep: Mapping[str, object], dep_index: int) -
             aliased_by=where.aliases.get(name, ()),
             dep_index=dep_index,
         )
+
+
+def _package_files(report: Mapping[str, object]) -> Mapping[str, object]:
+    """Return the package files of the report, by manager."""
+    found = _repository(report).get("packageFiles")
+    if not isinstance(found, Mapping):
+        msg = "the report holds no packageFiles; renovate found nothing to read"
+        raise ReportError(msg)
+    return found
 
 
 def _repository(report: Mapping[str, object]) -> Mapping[str, object]:

@@ -14,6 +14,9 @@ lock file update, a transitive dependency included. uv does it with ``--upgrade-
 name==version``, as Renovate's own pull request does. ``npm install name@version`` also writes the
 version into ``package.json``, so the manifest is put back afterwards, and a second plain run makes
 the lock file match it again while it keeps the version just locked.
+
+Lock file maintenance moves every dependency in its lock file to the newest version the manifest
+allows, as Renovate's lock file maintenance branch does.
 """
 
 import shutil
@@ -45,6 +48,9 @@ class Locker:
     rewrites_manifest: bool = False
     """Whether pinning also writes the version into the manifest, which then has to be put back."""
 
+    upgrade: tuple[str, ...] = ()
+    """The command that moves every dependency to the newest version the manifest allows."""
+
     @property
     def program(self) -> str:
         """Return the program that has to be on PATH."""
@@ -58,6 +64,7 @@ UV = Locker(
     no_solution="No solution found",
     manager="pep621",
     pin=lambda name, version: ("--upgrade-package", f"{name}=={version}"),
+    upgrade=("uv", "lock", "--upgrade"),
 )
 NPM = Locker(
     manifest="package.json",
@@ -69,6 +76,10 @@ NPM = Locker(
     manager="npm",
     pin=lambda name, version: (f"{name}@{version}",),
     rewrites_manifest=True,
+    upgrade=(
+        *("npm", "update", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"),
+        "--no-save",
+    ),
 )
 _LOCKERS = (UV, NPM)
 
@@ -111,15 +122,80 @@ def refresh(
     """
     targets = [target for target in _targets(root, package_files) if tracked(target[2])]
     _require_lock_files(targets, lock_updates)
+    return _each(
+        root,
+        targets,
+        lambda locker, directory: _relock(
+            root, locker, directory, _specs(locker, directory, lock_updates)
+        ),
+    )
+
+
+def maintenance_targets(
+    root: Path,
+    package_files: Sequence[tuple[str, str]],
+    *,
+    tracked: Callable[[str], bool] = lambda _path: True,
+) -> tuple[str, ...]:
+    """Return the lock files that maintenance moves: of each (manager, path) its locker reads."""
+    return tuple(target[2] for target in _maintained(root, package_files, tracked))
+
+
+def maintain(
+    root: Path,
+    package_files: Sequence[tuple[str, str]],
+    *,
+    tracked: Callable[[str], bool] = lambda _path: True,
+) -> tuple[str, ...]:
+    """
+    Move every dependency in each lock file to the newest version its manifest allows.
+
+    Returns the lock files whose content changed. When one fails, every lock file is put back.
+    """
+    targets = _maintained(root, package_files, tracked)
+    return _each(root, targets, lambda locker, directory: _upgrade(root, locker, directory))
+
+
+def _maintained(
+    root: Path,
+    package_files: Sequence[tuple[str, str]],
+    tracked: Callable[[str], bool],
+) -> list[_Target]:
+    """Return the targets of the package files that their own manager's locker reads."""
+    paths = [
+        path
+        for manager, path in package_files
+        if (locker := _locker_for(PurePosixPath(path).name)) and locker.manager == manager
+    ]
+    return [target for target in _targets(root, paths) if tracked(target[2])]
+
+
+def _each(
+    root: Path,
+    targets: Sequence[_Target],
+    action: Callable[[Locker, str], None],
+) -> tuple[str, ...]:
+    """Run *action* on each target, and return the lock files it changed, or put them all back."""
     before = {lock_file: (root / lock_file).read_bytes() for _, _, lock_file in targets}
     try:
         for locker, directory, _ in targets:
-            _relock(root, locker, directory, _specs(locker, directory, lock_updates))
+            action(locker, directory)
     except LockError:
         for lock_file, content in before.items():
             (root / lock_file).write_bytes(content)
         raise
     return tuple(name for name, content in before.items() if (root / name).read_bytes() != content)
+
+
+def _upgrade(root: Path, locker: Locker, directory: str) -> None:
+    """Run the package manager's upgrade in one directory, keeping its manifest as it was."""
+    _require_program(locker, directory)
+    manifest = root / directory / locker.manifest
+    original = manifest.read_bytes()
+    try:
+        _run(root, locker, directory, argv=locker.upgrade)
+    finally:
+        manifest.write_bytes(original)
 
 
 def _require_lock_files(targets: Sequence[_Target], lock_updates: Sequence[Update]) -> None:
@@ -176,13 +252,7 @@ def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = (
     With *specs*, the manager locks each of them. One that also rewrote the manifest has it put back
     and runs once more, so the lock file matches the manifest again.
     """
-    if not shutil.which(locker.program):
-        msg = (
-            f"{_joined(directory, locker.manifest)} was edited and {locker.lock_file} sits beside "
-            f"it, but {locker.program} is not on PATH. Install {locker.program}, or pass "
-            "--no-lock and refresh the lock file yourself."
-        )
-        raise LockError(msg)
+    _require_program(locker, directory)
     if not locker.rewrites_manifest:
         _run(root, locker, directory, specs)
         return
@@ -196,10 +266,29 @@ def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = (
     _run(root, locker, directory)
 
 
-def _run(root: Path, locker: Locker, directory: str, specs: Sequence[str] = ()) -> None:
+def _require_program(locker: Locker, directory: str) -> None:
+    """Raise when the package manager is not installed."""
+    if not shutil.which(locker.program):
+        msg = (
+            f"{locker.lock_file} sits beside {_joined(directory, locker.manifest)}, but "
+            f"{locker.program} is not on PATH. Install {locker.program}, or pass --no-lock and "
+            "refresh the lock file yourself."
+        )
+        raise LockError(msg)
+
+
+def _run(
+    root: Path,
+    locker: Locker,
+    directory: str,
+    specs: Sequence[str] = (),
+    *,
+    argv: Sequence[str] = (),
+) -> None:
     """Run the package manager once, raising with what it said when it fails."""
+    command = [*(argv or locker.argv), *specs]
     completed = subprocess.run(  # noqa: S603  # nosec B603 B607  # argv from _LOCKERS, no shell
-        [*locker.argv, *specs],
+        command,
         cwd=root / directory,
         capture_output=True,
         text=True,
@@ -207,7 +296,7 @@ def _run(root: Path, locker: Locker, directory: str, specs: Sequence[str] = ()) 
     )
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
-        msg = f"{' '.join(locker.argv[:2])} failed in {directory or '.'}:\n{detail}"
+        msg = f"{' '.join(command[:2])} failed in {directory or '.'}:\n{detail}"
         raise (NoSolutionError if locker.no_solution in detail else LockError)(msg)
 
 

@@ -99,6 +99,7 @@ $ renovate-apply --help
 | `rnv --skip python`           | Hold a dependency back by name, as a glob, repeatable     |
 | `rnv --prefix "build(deps):"` | Set the first word of every commit subject                |
 | `rnv --no-lock`               | Do not refresh the lock file beside an edited manifest    |
+| `rnv --lock-maintenance`      | Also upgrade every lock file, in one more commit          |
 | `rnv ~/code/other-repo`       | Work on another repository                                |
 
 `renovate-apply` and `rnv` are the same command.
@@ -176,8 +177,8 @@ reason:
   `package.json` with a `package-lock.json` beside it, are relocked and committed together. Any
   other lock file, such as `yarn.lock` or `pnpm-lock.yaml`, is left untouched, so run its update
   yourself.
-- **Renovate's lock file maintenance is not applied.** Those branches carry no dependency updates,
-  so they are not in the report at all.
+- **Renovate's lock file maintenance runs only with `--lock-maintenance`.** That branch carries no
+  dependency updates, so the report does not say whether your configuration turns it on.
 - **A group that cannot be applied is reported and passed over.** The groups after it are still
   applied and committed, and the run ends non-zero. Only a failure before the first group, such as a
   scan that did not run or a working copy that is not clean, ends the run with nothing done.

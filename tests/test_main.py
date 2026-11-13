@@ -862,3 +862,99 @@ def test_a_commit_failure_stops_the_run_before_the_next_group(
     assert "Committed" not in captured.out
     hooks = (repo / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert "typos\n    rev: v0.16.5" in hooks
+
+
+def given_a_uv_project(repo: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Commit a uv project, report it with one image update, and record each maintenance run."""
+    with_manifest(repo)
+    report = report_for(docker_update())
+    files = report["repositories"]["local"]["packageFiles"]
+    files["pep621"] = [{"packageFile": "pyproject.toml", "lockFiles": ["uv.lock"], "deps": []}]
+    monkeypatch.setattr(main_module, "scan", lambda *_args, **_kwargs: report)
+    runs: list[str] = []
+
+    def maintain(
+        root: Path, found: Sequence[tuple[str, str]], **_kwargs: object
+    ) -> tuple[str, ...]:
+        runs.append(str(root))
+        assert ("pep621", "pyproject.toml") in found
+        (root / "uv.lock").write_text("version = 1  # upgraded\n", encoding="utf-8")
+        return ("uv.lock",)
+
+    monkeypatch.setattr(main_module, "maintain", maintain)
+    return runs
+
+
+def test_lock_maintenance_commits_the_lock_files_alone_after_the_groups(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Renovate's maintenance branch carries only the lock files, so the commit does too."""
+    given_a_uv_project(repo, monkeypatch)
+    assert run_cli(str(repo), "--lock-maintenance") == 0
+
+    assert subjects(repo)[-2:] == [
+        "deps: update ghcr.io/atuinsh/atuin to 18.22.0",
+        "deps: lock file maintenance",
+    ]
+    files = git(repo, "show", "--name-only", "--pretty=", "HEAD").stdout.split()
+    assert files == ["uv.lock"]
+
+
+@pytest.mark.parametrize("flags", [(), ("--lock-maintenance", "--no-lock")])
+def test_lock_maintenance_runs_only_when_asked_and_allowed(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    flags: tuple[str, ...],
+) -> None:
+    """Off by default, since the report does not say the configuration turns it on."""
+    runs = given_a_uv_project(repo, monkeypatch)
+    assert run_cli(str(repo), *flags) == 0
+    assert runs == []
+
+
+def test_lock_maintenance_in_a_dry_run_names_the_lock_files(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A dry run says what maintenance would upgrade and runs nothing."""
+    runs = given_a_uv_project(repo, monkeypatch)
+    assert run_cli(str(repo), "--lock-maintenance", "--dry-run") == 0
+
+    out = capsys.readouterr().out
+    assert "would apply  deps: lock file maintenance\n    uv.lock  upgraded" in out
+    assert runs == []
+
+
+def test_lock_maintenance_that_fails_fails_the_run(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The groups are still committed, and the run ends non-zero."""
+    given_a_uv_project(repo, monkeypatch)
+
+    def maintain(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        msg = "uv lock failed in .:\nboom"
+        raise LockError(msg)
+
+    monkeypatch.setattr(main_module, "maintain", maintain)
+    assert run_cli(str(repo), "--lock-maintenance") == 1
+
+    assert subjects(repo)[-1] == "deps: update ghcr.io/atuinsh/atuin to 18.22.0"
+    assert "lock file maintenance: uv lock failed" in capsys.readouterr().err
+
+
+def test_lock_maintenance_with_nothing_to_upgrade_says_so(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Up-to-date lock files make no commit."""
+    given_a_uv_project(repo, monkeypatch)
+    monkeypatch.setattr(main_module, "maintain", lambda *_args, **_kwargs: ())
+    assert run_cli(str(repo), "--lock-maintenance") == 0
+
+    assert subjects(repo)[-1] == "deps: update ghcr.io/atuinsh/atuin to 18.22.0"
+    assert "every lock file is up to date" in capsys.readouterr().out

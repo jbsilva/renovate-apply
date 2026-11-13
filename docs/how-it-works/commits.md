@@ -159,3 +159,23 @@ hook at the next commit. When the package manager finds no solution, the group i
     If `uv` or `npm` is not on your `PATH` when its lock file needs refreshing, the group fails rather
     than committing a manifest that no longer matches its lock file. Install it, or pass `--no-lock` and
     refresh the lock file yourself.
+
+### Lock file maintenance
+
+Renovate reports a transitive dependency only when it has a security alert. Everything else moves in
+its lock file maintenance branch, which `config:best-practices` opens once a week. That branch is
+not in the report, so `--lock-maintenance` asks for it. After the groups, the tool runs one command
+per lock file and commits only the lock files:
+
+```bash
+uv lock --upgrade
+npm update --package-lock-only --ignore-scripts --no-audit --no-fund --no-save
+```
+
+```console
+applied  deps: lock file maintenance
+    uv.lock  upgraded
+```
+
+`exclude-newer` in `[tool.uv]` still holds a new release back. If one command fails, every lock file
+goes back to what it held, and the run ends non-zero.

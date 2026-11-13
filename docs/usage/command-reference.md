@@ -78,6 +78,13 @@ Use this when `uv` or `npm` is not installed, or when you want to update the loc
 commit will then hold a manifest whose lock file does not match it, and a group that does not lock
 is not held back. See [Updates that do not lock](held-back.md#updates-that-do-not-lock).
 
+### `--lock-maintenance`
+
+After the groups, move every dependency in each lock file to the newest version its manifest allows,
+as Renovate's lock file maintenance does. Default off, because the report does not say whether your
+configuration turns lock file maintenance on. `--no-lock` turns it off too. See
+[Lock file maintenance](../how-it-works/commits.md#lock-file-maintenance).
+
 ### `--skip PATTERN`
 
 Hold a dependency back by name. Repeatable, and the pattern is a glob:
