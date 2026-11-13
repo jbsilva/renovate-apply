@@ -84,26 +84,41 @@ def refresh(
     Each of *lock_updates*, which ``can_move_in_lock`` accepted, is moved to its new version in the
     lock file of its own manifest.
 
-    Returns the lock files that were refreshed, as repository-relative paths, so the caller can
+    Returns the lock files whose content changed, as repository-relative paths, so the caller can
     commit them together with the manifest. When one of them fails, every lock file is put back as
     it was, so a group that touches two projects does not leave the first one relocked.
     """
     targets = _targets(root, package_files)
+    _require_lock_files(targets, lock_updates)
     before = {lock_file: (root / lock_file).read_bytes() for _, _, lock_file in targets}
     try:
-        return tuple(
+        for locker, directory, _ in targets:
             _relock(root, locker, directory, _specs(locker, directory, lock_updates))
-            for locker, directory, _ in targets
-        )
     except LockError:
         for lock_file, content in before.items():
             (root / lock_file).write_bytes(content)
         raise
+    return tuple(name for name, content in before.items() if (root / name).read_bytes() != content)
 
 
-def _targets(root: Path, package_files: Sequence[str]) -> list[tuple[Locker, str, str]]:
+def _require_lock_files(targets: Sequence[_Target], lock_updates: Sequence[Update]) -> None:
+    """Raise for a lock file update whose lock file is not on disk: there is nothing to move."""
+    manifests = {_joined(directory, locker.manifest) for locker, directory, _ in targets}
+    for update in lock_updates:
+        if update.package_file not in manifests:
+            msg = (
+                f"{update.dep_name}: the report has a lock file update for {update.package_file}, "
+                "but there is no lock file beside it."
+            )
+            raise LockError(msg)
+
+
+type _Target = tuple[Locker, str, str]
+
+
+def _targets(root: Path, package_files: Sequence[str]) -> list[_Target]:
     """Return each edited manifest's locker, directory and lock file, each lock file once."""
-    found: dict[str, tuple[Locker, str, str]] = {}
+    found: dict[str, _Target] = {}
     for package_file in package_files:
         path = PurePosixPath(package_file)
         locker = _locker_for(path.name)
@@ -126,9 +141,9 @@ def _specs(locker: Locker, directory: str, lock_updates: Sequence[Update]) -> li
     ]
 
 
-def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = ()) -> str:
+def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = ()) -> None:
     """
-    Run the package manager in one directory and return the lock file it refreshed.
+    Run the package manager in one directory to refresh its lock file.
 
     With *specs*, the manager first locks each of them, and the manifest it rewrote is put back.
     """
@@ -147,7 +162,6 @@ def _relock(root: Path, locker: Locker, directory: str, specs: Sequence[str] = (
         finally:
             manifest.write_bytes(original)
     _run(root, locker, directory)
-    return _joined(directory, locker.lock_file)
 
 
 def _run(root: Path, locker: Locker, directory: str, specs: Sequence[str] = ()) -> None:

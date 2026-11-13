@@ -651,7 +651,10 @@ def test_a_group_an_earlier_group_already_made_is_not_a_failure(
     git(repo, "commit", "-m", "add an npm project")
 
     def refresh(root: Path, *_args: object) -> tuple[str, ...]:
-        (root / "package-lock.json").write_text('{"fixed": true}\n', encoding="utf-8")
+        lock = root / "package-lock.json"
+        if lock.read_text(encoding="utf-8") == '{"fixed": true}\n':
+            return ()
+        lock.write_text('{"fixed": true}\n', encoding="utf-8")
         return ("package-lock.json",)
 
     monkeypatch.setattr(main_module, "refresh", refresh)
@@ -666,6 +669,31 @@ def test_a_group_an_earlier_group_already_made_is_not_a_failure(
 
     assert subjects(repo)[2:] == ["deps: update osls to 4.5.0"]
     assert NOTHING_LEFT in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mode", ["--commit", "--no-commit", "--stage"])
+def test_a_run_whose_only_group_has_nothing_to_commit_applies_nothing(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+) -> None:
+    """A lock file that already holds the version changes nothing, in any mode that writes."""
+    (repo / "package.json").write_text("{}\n", encoding="utf-8")
+    (repo / "package-lock.json").write_text("{}\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add an npm project")
+    monkeypatch.setattr(main_module, "refresh", lambda *_args: ())
+    given_report(monkeypatch, npm_lock_update())
+    assert run_cli(str(repo), mode) == 0
+
+    out = capsys.readouterr().out
+    assert (
+        f"unchanged  deps: update osls to 4.5.0\n    osls  4.3.1 -> 4.5.0\n    {NOTHING_LEFT}"
+        in out
+    )
+    assert "Nothing to apply." in out
+    assert "applied" not in out
 
 
 def test_a_lock_that_fails_for_another_reason_fails_the_group(

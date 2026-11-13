@@ -123,15 +123,18 @@ applied  deps: update non-major
 ```
 
 A lock file that does not match its `package.json` is corrected by the first group that refreshes
-it. A later group that only asked for that same correction then has nothing left to commit. The run
-says so and goes on:
+it. A later group that only asked for that same correction then changes no file. The run says so and
+goes on:
 
 ```console
-applied  deps: update serverless-domain-manager to 11.0.0
+unchanged  deps: update serverless-domain-manager to 11.0.0
     serverless-domain-manager  10.3.1 -> 11.0.0
-    docker/package-lock.json  refreshed
-    nothing left to commit: an earlier group already made this change
+    no file changed, so there is nothing to commit
 ```
+
+A group can also change nothing on its own. For example, an `overrides` entry in `package.json` can
+keep npm at the version it has. The tool cannot tell these cases apart. If you see this line for a
+group that no earlier group covers, read the lock file.
 
 If the package manager fails, the group is undone: its manifests and lock files go back to what they
 held before the group. A manifest left edited would otherwise fail the repository's own lock file

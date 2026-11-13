@@ -26,7 +26,7 @@ from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
 from renovate_apply.errors import GitError, LockError, NoSolutionError, RenovateApplyError
 from renovate_apply.files import apply_group, repeats_of, restore, snapshot
-from renovate_apply.git import commit, has_staged, require_clean, require_repository, stage
+from renovate_apply.git import commit, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
@@ -62,7 +62,7 @@ out = Console(markup=False, highlight=False, soft_wrap=True)
 err = Console(markup=False, highlight=False, soft_wrap=True, stderr=True)
 
 
-NOTHING_LEFT = "nothing left to commit: an earlier group already made this change"
+NOTHING_LEFT = "no file changed, so there is nothing to commit"
 
 
 class Mode(Enum):
@@ -148,7 +148,7 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     _report_outcome(
         total=len(groups),
         failed=len(outcome.failed),
-        applied=len(groups) - len(outcome.missing),
+        applied=len(groups) - len(outcome.missing) - outcome.empty,
         mode=mode,
     )
     if outcome.failed:
@@ -221,6 +221,9 @@ class _Outcome:
     missing: set[str] = field(default_factory=set)
     """The branches whose edits are not in the tree: failed, held back, or never tried."""
 
+    empty: int = 0
+    """The groups that changed no file, so there was nothing to commit."""
+
     def fail(self, groups: list[Group]) -> None:
         """Count *groups* as failed."""
         self.failed += groups
@@ -254,7 +257,7 @@ def _perform(run: _Run, groups: list[Group]) -> _Outcome:
             outcome.hold(one, held_rebased(missing))
             continue
         try:
-            _perform_group(run, one)
+            changed = _perform_group(run, one)
         except NoSolutionError as error:
             subject = message(one, run.prefix)[0]
             err.print(f"renovate-apply: {subject} does not lock, undone. {error}", style="yellow")
@@ -265,6 +268,9 @@ def _perform(run: _Run, groups: list[Group]) -> _Outcome:
             if isinstance(error, GitError):
                 outcome.fail(_stop(groups[index + 1 :]))
                 break
+        else:
+            if not changed:
+                outcome.empty += 1
     return outcome
 
 
@@ -275,31 +281,42 @@ def _stop(rest: list[Group]) -> list[Group]:
     return rest
 
 
-def _perform_group(run: _Run, one: Group) -> None:
-    """Apply one group, then lock, stage, or commit it as the run's mode says."""
+def _perform_group(run: _Run, one: Group) -> bool:
+    """Apply one group as the run's mode says, and return False when it had nothing to change."""
     root, mode = run.root, run.mode
     paragraphs = message(one, run.prefix)
     originals = snapshot(root, one.package_files)
-    package_files = apply_group(root, one, drafts=run.drafts)
+    apply_group(root, one, drafts=run.drafts)
+    if mode is Mode.DRY_RUN:
+        _announce("would apply  ", one, paragraphs[0])
+        return True
     # The lock file is refreshed before the commit, so the manifest and the lock file that matches
     # it are one commit, which is how Renovate's own pull request carries them.
-    locks = _relock(root, one, originals) if run.lock and mode is not Mode.DRY_RUN else ()
-    out.print("would apply  " if mode is Mode.DRY_RUN else "applied  ", style="dim", end="")
-    out.print(paragraphs[0], style="bold")
+    locks = _relock(root, one, originals) if run.lock else ()
+    after = snapshot(root, one.package_files)
+    changed = [*(name for name, text in after.items() if text != originals[name]), *locks]
+    if not changed:
+        # A lock file that did not match its manifest is put right by the first group to refresh
+        # it, which can leave a later group that only asked for that same fix with nothing to add.
+        _announce("unchanged  ", one, paragraphs[0])
+        out.print(f"    {NOTHING_LEFT}", style="yellow")
+        return False
+    _announce("applied  ", one, paragraphs[0], locks)
+    if mode is Mode.STAGE:
+        stage(root, changed)
+    elif mode is Mode.COMMIT:
+        commit(root, changed, paragraphs)
+    return True
+
+
+def _announce(verb: str, one: Group, subject: str, locks: tuple[str, ...] = ()) -> None:
+    """Print what happened to one group: its subject, each move, and each refreshed lock file."""
+    out.print(verb, style="dim", end="")
+    out.print(subject, style="bold")
     for name, moved in moves(one):
         out.print(f"    {name}  {moved}")
     for refreshed in locks:
         out.print(f"    {refreshed}  refreshed", style="dim")
-    if mode is Mode.STAGE:
-        stage(root, [*package_files, *locks])
-    elif mode is Mode.COMMIT:
-        stage(root, [*package_files, *locks])
-        # A lock file that did not match its manifest is put right by the first group to refresh
-        # it, which can leave a later group that only asked for that same fix with nothing to add.
-        if has_staged(root):
-            commit(root, [*package_files, *locks], paragraphs)
-        else:
-            out.print(f"    {NOTHING_LEFT}", style="yellow")
 
 
 def _relock(root: Path, one: Group, originals: dict[str, str]) -> tuple[str, ...]:

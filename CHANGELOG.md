@@ -15,8 +15,8 @@ All notable changes to this project are documented here. The format is based on
 - npm lock file updates, which move a dependency inside the range of its `package.json`, are applied
   with `npm install name@version` instead of held. `package.json` stays as it was. Other lock file
   updates are still held, and `--no-lock` holds them all.
-- A group with nothing left to commit, because an earlier group of the run already made its change,
-  is reported and passed over instead of failing the run.
+- A group that changes no file, for example because an earlier group of the run already made its
+  change, is reported as unchanged and passed over instead of failing the run.
 
 ### Fixed
 

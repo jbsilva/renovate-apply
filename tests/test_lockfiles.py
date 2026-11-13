@@ -11,6 +11,14 @@ from renovate_apply.errors import LockError, NoSolutionError
 from renovate_apply.lockfiles import NPM, refresh
 
 
+def relocked(argv: list[str], cwd: object) -> subprocess.CompletedProcess[str]:
+    """Write the lock file the way a successful run of the package manager in *argv* would."""
+    assert isinstance(cwd, Path)
+    lock_file = {"uv": "uv.lock", "npm": "package-lock.json"}[argv[0]]
+    (cwd / lock_file).write_text(f"relocked by {' '.join(argv)}\n", encoding="utf-8")
+    return subprocess.CompletedProcess(argv, 0, "", "")
+
+
 def uv_run(recorder: list[Path]) -> object:
     """Return a stand-in for subprocess.run that records where uv was asked to run."""
 
@@ -18,7 +26,7 @@ def uv_run(recorder: list[Path]) -> object:
         cwd = kwargs.get("cwd")
         assert isinstance(cwd, Path)
         recorder.append(cwd)
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return relocked(argv, cwd)
 
     return run
 
@@ -163,15 +171,36 @@ def test_refresh_relocks_a_package_json_with_npm(
     with_npm_project(tmp_path)
     commands: list[list[str]] = []
 
-    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(argv)
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return relocked(argv, kwargs.get("cwd"))
 
     monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(subprocess, "run", run)
 
     assert refresh(tmp_path, ["package.json"]) == ("package-lock.json",)
     assert commands == [list(NPM.argv)]
+
+
+def test_refresh_leaves_out_a_lock_file_that_did_not_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock file that already matched its manifest has nothing to add to a commit."""
+    with_npm_project(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        subprocess, "run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "", "")
+    )
+
+    assert refresh(tmp_path, ["package.json"]) == ()
+
+
+def test_refresh_fails_a_lock_file_update_with_no_lock_file_on_disk(tmp_path: Path) -> None:
+    """Counted as applied, the update would be reported as moved with nothing written."""
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(LockError, match="no lock file beside it"):
+        refresh(tmp_path, ["package.json"], [npm_lock_update()])
 
 
 def test_refresh_never_lets_npm_install_or_run_scripts() -> None:
@@ -194,7 +223,7 @@ def test_refresh_relocks_uv_and_npm_projects_of_one_group(
         cwd = kwargs.get("cwd")
         assert isinstance(cwd, Path)
         calls.append((argv[0], cwd))
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return relocked(argv, cwd)
 
     monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(subprocess, "run", run)
@@ -270,11 +299,11 @@ def test_refresh_moves_a_lock_file_update_and_keeps_the_manifest(
     with_npm_project(tmp_path)
     seen: list[tuple[list[str], str]] = []
 
-    def run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         seen.append((argv, (tmp_path / "package.json").read_text(encoding="utf-8")))
         if argv[-1] == "osls@4.5.0":
             (tmp_path / "package.json").write_text('{"osls": "^4.5.0"}\n', encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+        return relocked(argv, kwargs.get("cwd"))
 
     monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(subprocess, "run", run)
