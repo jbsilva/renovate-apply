@@ -1,6 +1,7 @@
 """The command itself, over a real repository, with the scan replaced by a report."""
 
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -338,6 +339,29 @@ def test_one_line_two_managers_found_is_one_commit(
     assert f"wrangler -> 4.148.0 ({held})" in capsys.readouterr().out
 
 
+def test_a_step_after_a_repeat_follows_the_branch_the_repeat_stands_for(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The regex minor is held as a repeat, so its major follows the github-actions minor."""
+    action, regex = wrangler_updates()
+    major = replace(
+        regex, update_type="major", branch_name="renovate/major-tools", new_value="5.0.0"
+    )
+    (repo / ".github" / "workflows").mkdir(parents=True)
+    (repo / action.package_file).write_text(WORKFLOW, encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "workflow")
+    given_report(monkeypatch, action, regex, major)
+    assert run_cli(str(repo), "--major") == 0
+
+    assert subjects(repo)[2:] == [
+        "deps: update wrangler to 4.148.0",
+        "deps: update wrangler to 5.0.0",
+    ]
+    assert 'wranglerVersion: "5.0.0"' in (repo / action.package_file).read_text(encoding="utf-8")
+
+
 def test_a_version_and_a_digest_of_one_image_in_one_branch_is_the_version(
     repo: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -351,6 +375,128 @@ def test_a_version_and_a_digest_of_one_image_in_one_branch_is_the_version(
     assert subjects(repo)[1:] == ["deps: update ghcr.io/atuinsh/atuin to 18.22.0"]
     held = "renovate/stack-images updates the same text to 18.22.0"
     assert f"ghcr.io/atuinsh/atuin -> v18.13.3, new digest ({held})" in capsys.readouterr().out
+
+
+def test_a_minor_and_a_major_of_one_image_are_two_commits_in_turn(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Made from the same line, the major would find its text already rewritten by the minor."""
+    major = docker_update(
+        update_type="major",
+        branch_name="renovate/major-atuin",
+        new_value="19.0.0",
+        new_digest="sha256:eeee",
+    )
+    given_report(monkeypatch, docker_update(), major)
+    assert run_cli(str(repo), "--major") == 0
+
+    assert subjects(repo)[1:] == [
+        "deps: update ghcr.io/atuinsh/atuin to 18.22.0",
+        "deps: update ghcr.io/atuinsh/atuin to 19.0.0",
+    ]
+    compose = (repo / "stack/compose.yaml").read_text(encoding="utf-8")
+    assert "ghcr.io/atuinsh/atuin:19.0.0@sha256:eeee" in compose
+
+
+def test_a_dry_run_reads_a_major_on_top_of_the_minor(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Nothing is written, so the major has to find the minor's text in the run's own drafts."""
+    major = docker_update(
+        update_type="major",
+        branch_name="renovate/major-atuin",
+        new_value="19.0.0",
+        new_digest="sha256:eeee",
+    )
+    given_report(monkeypatch, docker_update(), major)
+    assert run_cli(str(repo), "--major", "--dry-run") == 0
+
+    assert "would apply  deps: update ghcr.io/atuinsh/atuin to 19.0.0" in capsys.readouterr().out
+    assert git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_a_major_is_held_when_the_minor_it_follows_fails(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The minor's text was never written, so the major is held, not counted as a second failure."""
+    stale = docker_update(dep_name="ghost", replace_string="ghost:1.0")
+    major = docker_update(
+        update_type="major",
+        branch_name="renovate/major-atuin",
+        new_value="19.0.0",
+        new_digest="sha256:eeee",
+    )
+    given_report(monkeypatch, docker_update(), stale, major)
+    assert run_cli(str(repo), "--major") == 1
+
+    out = capsys.readouterr().out
+    assert "1 of 2 groups could not be applied" in out
+    assert "(rebased onto renovate/stack-images, which was not applied)" in out
+    assert git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_two_lines_of_one_dependency_on_two_branches_are_both_edited(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same range in devDependencies and peerDependencies is two lines, not two steps."""
+    manifest = repo / "package.json"
+    manifest.write_text(
+        '{"devDependencies": {"react": "^18.2.0"}, "peerDependencies": {"react": "^18.2.0"}}\n',
+        encoding="utf-8",
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add package.json")
+    dev = Update(
+        manager="npm",
+        package_file="package.json",
+        dep_name="react",
+        update_type="major",
+        branch_name="renovate/major-dev-dependencies",
+        current_value="^18.2.0",
+        new_value="^19.0.0",
+        dep_index=0,
+    )
+    peer = replace(
+        dev,
+        branch_name="renovate/react-19.x",
+        new_value="^18.2.0 || ^19.0.0",
+        dep_index=1,
+    )
+    given_report(monkeypatch, dev, peer)
+    assert run_cli(str(repo), "--major", "--no-lock") == 0
+
+    assert manifest.read_text(encoding="utf-8") == (
+        '{"devDependencies": {"react": "^19.0.0"}, '
+        '"peerDependencies": {"react": "^18.2.0 || ^19.0.0"}}\n'
+    )
+
+
+def test_two_majors_of_one_image_follow_each_other(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With a branch per major, each major moves on from the version the previous one wrote."""
+    majors = [
+        docker_update(
+            update_type="major",
+            branch_name=f"renovate/major-{version}",
+            new_value=f"{version}.0.0",
+            new_digest=f"sha256:{digest}",
+        )
+        for version, digest in (("19", "eeee"), ("20", "ffff"))
+    ]
+    given_report(monkeypatch, docker_update(), *majors)
+    assert run_cli(str(repo), "--major") == 0
+
+    assert len(subjects(repo)) == 4
+    compose = (repo / "stack/compose.yaml").read_text(encoding="utf-8")
+    assert "ghcr.io/atuinsh/atuin:20.0.0@sha256:ffff" in compose
 
 
 def with_manifest(repo: Path) -> None:

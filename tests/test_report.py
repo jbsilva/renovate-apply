@@ -1,9 +1,12 @@
 """Reading Renovate's report: what it holds, what is held back, and how it groups."""
 
+from dataclasses import replace
+
 import pytest
 from helpers import docker_update, hook_update, npm_lock_update, report_for
 
 from renovate_apply.errors import ReportError
+from renovate_apply.models import Update
 from renovate_apply.report import (
     HELD_LOCKFILE,
     HELD_MAJOR,
@@ -11,6 +14,7 @@ from renovate_apply.report import (
     HELD_PENDING,
     HELD_RENAME,
     HELD_SKIPPED,
+    chain_branches,
     group,
     held_collision,
     problems,
@@ -231,3 +235,155 @@ def test_split_holds_a_lock_file_update_npm_cannot_make(overrides: dict[str, obj
     """Only a package-lock.json beside the manifest, with a version to lock, is moved here."""
     _, held = split([npm_lock_update(**overrides)], with_major=False)
     assert held[0].reason == HELD_LOCKFILE
+
+
+def major_update(**overrides: object) -> Update:
+    """Return the major of the image docker_update moves, on a branch of its own."""
+    fields: dict[str, object] = {
+        "update_type": "major",
+        "branch_name": "renovate/major-atuin",
+        "new_value": "19.0.0",
+        "new_digest": "sha256:eeee",
+    }
+    fields.update(overrides)
+    return docker_update(**fields)
+
+
+def test_chain_branches_rebases_a_major_onto_the_minor_before_it() -> None:
+    """The major looks for the text the minor writes, as its pull request would after a rebase."""
+    minor = docker_update()
+    kept, held, order = chain_branches([minor, major_update()])
+    assert kept[0] == minor
+    assert kept[1].replace_string == "ghcr.io/atuinsh/atuin:18.22.0@sha256:cccc"
+    assert (kept[1].current_value, kept[1].current_digest) == ("18.22.0", "sha256:cccc")
+    assert held == []
+    assert order == [("renovate/stack-images", "renovate/major-atuin")]
+
+
+def test_chain_branches_rebases_an_update_with_no_replace_string_by_its_version() -> None:
+    """The pre-commit manager reports no text, so the bare version is what moves on."""
+    minor = hook_update()
+    major = hook_update(update_type="major", branch_name="renovate/major-typos", new_value="v1.0.0")
+    kept, _, _ = chain_branches([minor, major])
+    assert kept[1].current_value == "v0.16.9"
+    assert kept[1].replace_string is None
+
+
+def test_chain_branches_holds_a_minor_after_the_major_of_the_same_use() -> None:
+    """The major already passes the minor, so the minor has nothing left to do."""
+    major, minor = major_update(), docker_update()
+    assert chain_branches([major, minor]) == ([major], [(minor, major)], [])
+
+
+def test_chain_branches_holds_the_later_of_two_minors_on_two_branches() -> None:
+    """Two non-majors of one use have no order to follow, so only the first is applied."""
+    first, second = docker_update(), docker_update(branch_name="renovate/atuin")
+    assert chain_branches([first, second]) == ([first], [(second, first)], [])
+
+
+def test_chain_branches_keeps_two_uses_in_one_branch() -> None:
+    """Two uses of one line in a branch are both edited, which apply_all already handles."""
+    first = docker_update()
+    assert chain_branches([first, first]) == ([first, first], [], [])
+
+
+def test_chain_branches_chains_a_step_onto_the_branch_a_repeat_stands_for() -> None:
+    """A repeat is held, but its line moves on its first's branch, so the next step waits for it."""
+    minor = docker_update(manager="regex", branch_name="renovate/tools")
+    elsewhere = docker_update(branch_name="renovate/github-actions")
+    kept, held, order = chain_branches([minor, major_update(manager="regex")], [elsewhere, None])
+    assert [update.replace_string for update in kept] == [
+        "ghcr.io/atuinsh/atuin:18.22.0@sha256:cccc"
+    ]
+    assert held == []
+    assert order == [("renovate/github-actions", "renovate/major-atuin")]
+
+
+def test_chain_branches_holds_a_repeat_of_an_update_it_held() -> None:
+    """A digest held behind the minor makes no edit, so its repeat neither stands in nor chains."""
+    minor = docker_update()
+    digest = docker_update(update_type="digest", new_value="v18.13.3", new_digest="sha256:dddd")
+    digest = replace(digest, branch_name="renovate/atuin-digest")
+    regex_minor, regex_digest = replace(minor, manager="regex"), replace(digest, manager="regex")
+    updates = [minor, digest, regex_minor, regex_digest, major_update(manager="regex")]
+    kept, held, order = chain_branches(updates, [None, None, minor, digest, None])
+    assert held == [(digest, minor), (regex_digest, minor)]
+    assert kept[1].replace_string == "ghcr.io/atuinsh/atuin:18.22.0@sha256:cccc"
+    assert order == [("renovate/stack-images", "renovate/major-atuin")]
+
+
+def test_chain_branches_keeps_two_lines_with_the_same_text_apart() -> None:
+    """Two lines of one dependency are two dependencies in the report, each with its own steps."""
+    dev = docker_update(dep_index=0, update_type="major", new_value="19.0.0")
+    peer = docker_update(dep_index=1, branch_name="renovate/peer", new_value="18.22.0")
+    assert chain_branches([dev, peer]) == ([dev, peer], [], [])
+
+
+def test_chain_branches_rebases_each_major_onto_the_one_before_it() -> None:
+    """With a branch per major, the next major moves on from the text the previous one writes."""
+    major_20 = major_update(branch_name="renovate/major-20", new_value="20.0.0")
+    kept, held, order = chain_branches([docker_update(), major_update(), major_20])
+    assert kept[2].replace_string == "ghcr.io/atuinsh/atuin:19.0.0@sha256:eeee"
+    assert held == []
+    assert order == [
+        ("renovate/stack-images", "renovate/major-atuin"),
+        ("renovate/major-atuin", "renovate/major-20"),
+    ]
+
+
+def test_chain_branches_rebases_a_minor_onto_the_patch_before_it() -> None:
+    """With separateMinorPatch, merging the patch rebases the minor, the same as for a major."""
+    patch = docker_update(update_type="patch", branch_name="renovate/patch", new_value="v18.13.4")
+    kept, held, order = chain_branches([patch, docker_update()])
+    assert kept[1].replace_string == "ghcr.io/atuinsh/atuin:v18.13.4@sha256:cccc"
+    assert held == []
+    assert order == [("renovate/patch", "renovate/stack-images")]
+
+
+def test_chain_branches_leaves_a_lock_file_update_out_of_the_chain() -> None:
+    """The lock file update writes nothing in package.json, so the major has nothing to wait for."""
+    lock = npm_lock_update()
+    major = npm_lock_update(
+        update_type="major",
+        branch_name="renovate/major-osls",
+        new_value="^5.0.0",
+        is_lockfile_update=False,
+        new_version="5.0.0",
+    )
+    assert chain_branches([lock, major]) == ([lock, major], [], [])
+
+
+def test_chain_branches_rebases_a_second_use_of_the_line_the_same_way() -> None:
+    """Both uses of the line in the major's branch look for the text the minor writes."""
+    minor, major = docker_update(), major_update()
+    kept, held, _ = chain_branches([minor, major, minor, major])
+    assert kept[3] == kept[1]
+    assert held == []
+
+
+def test_chain_branches_holds_a_major_when_the_update_before_it_cannot_render() -> None:
+    """The broken minor fails in its own group, and the run still plans every other group."""
+    minor = docker_update(replace_template="{{#each depName}}{{/each}}")
+    major = major_update(replace_template="{{#each depName}}{{/each}}")
+    assert chain_branches([minor, major]) == ([minor], [(major, minor)], [])
+
+
+def test_group_puts_a_branch_after_the_one_it_is_rebased_onto() -> None:
+    """The major branch can come first in the report, through another dependency of its group."""
+    other = hook_update(branch_name="renovate/major-atuin")
+    minor = docker_update()
+    groups = group([other, minor], after=[("renovate/stack-images", "renovate/major-atuin")])
+    assert [(one.branch, one.after) for one in groups] == [
+        ("renovate/stack-images", ()),
+        ("renovate/major-atuin", ("renovate/stack-images",)),
+    ]
+
+
+def test_group_keeps_the_report_order_in_a_cycle() -> None:
+    """Two branches that each wait for the other cannot both be first, so the report decides."""
+    first, second = docker_update(), hook_update()
+    pairs = [(first.branch_name, second.branch_name), (second.branch_name, first.branch_name)]
+    assert [one.branch for one in group([first, second], pairs)] == [
+        first.branch_name,
+        second.branch_name,
+    ]

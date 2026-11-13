@@ -14,6 +14,7 @@ Nothing is pushed and nothing is deployed. Read the diff, then push.
 """
 
 import sys
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
@@ -24,15 +25,17 @@ from rich.console import Console
 from renovate_apply import __version__
 from renovate_apply.config import repository_defaults
 from renovate_apply.errors import GitError, LockError, NoSolutionError, RenovateApplyError
-from renovate_apply.files import apply_group, restore, snapshot, split_repeats
+from renovate_apply.files import apply_group, repeats_of, restore, snapshot
 from renovate_apply.git import commit, has_staged, require_clean, require_repository, stage
 from renovate_apply.lockfiles import refresh
 from renovate_apply.messages import DEFAULT_PREFIX, message, moves
 from renovate_apply.models import Held
 from renovate_apply.report import (
     HELD_NO_SOLUTION,
+    chain_branches,
     group,
     held_collision,
+    held_rebased,
     held_repeat,
     problems,
     read_updates,
@@ -139,16 +142,16 @@ def apply_updates(  # noqa: PLR0913 - every argument is one switch of a single f
     except RenovateApplyError as error:
         err.print(f"renovate-apply: {error}", style="red")
         raise SystemExit(1) from error
-    failed, unsolved = _perform(root, groups, prefix=prefix, mode=mode, lock=lock)
-    held += [Held(update, HELD_NO_SOLUTION) for one in unsolved for update in one.updates]
-    _report_held(held)
+    run = _Run(root, prefix, mode, lock=lock, drafts={} if mode is Mode.DRY_RUN else None)
+    outcome = _perform(run, groups)
+    _report_held([*held, *outcome.held])
     _report_outcome(
         total=len(groups),
-        failed=len(failed),
-        applied=len(groups) - len(failed) - len(unsolved),
+        failed=len(outcome.failed),
+        applied=len(groups) - len(outcome.missing),
         mode=mode,
     )
-    if failed:
+    if outcome.failed:
         raise SystemExit(1)
 
 
@@ -184,21 +187,54 @@ def _plan(  # noqa: PLR0913 - one argument per switch the command was given
     updates, collisions = split_collisions(read_updates(report))
     to_apply, held = split(updates, with_major=major, skip=skip, lock=lock)
     held += [Held(update, held_collision(first)) for update, first in collisions]
-    to_apply, repeats = split_repeats(root, to_apply)
-    held += [Held(update, held_repeat(first)) for update, first in repeats]
-    return group(to_apply), held
+    repeats = repeats_of(root, to_apply)
+    rebased, superseded, order = chain_branches(to_apply, repeats)
+    # A repeat of a superseded update is reported with that collision, not as a repeat of it.
+    collided = {id(update) for update, _ in superseded}
+    held += [
+        Held(update, held_repeat(first))
+        for update, first in zip(to_apply, repeats, strict=True)
+        if first is not None and id(update) not in collided
+    ]
+    held += [Held(update, held_collision(first)) for update, first in superseded]
+    return group(rebased, order), held
 
 
-def _perform(
-    root: Path,
-    groups: list[Group],
-    *,
-    prefix: str,
-    mode: Mode,
-    lock: bool,
-) -> tuple[list[Group], list[Group]]:
+@dataclass(frozen=True, slots=True)
+class _Run:
+    """What every group of one run shares."""
+
+    root: Path
+    prefix: str
+    mode: Mode
+    lock: bool
+    drafts: dict[str, str] | None
+    """The texts a dry run would have written so far, by package file; None when it writes."""
+
+
+@dataclass(slots=True)
+class _Outcome:
+    """What became of the groups of one run that were not applied."""
+
+    failed: list[Group] = field(default_factory=list)
+    held: list[Held] = field(default_factory=list)
+    missing: set[str] = field(default_factory=set)
+    """The branches whose edits are not in the tree: failed, held back, or never tried."""
+
+    def fail(self, groups: list[Group]) -> None:
+        """Count *groups* as failed."""
+        self.failed += groups
+        self.missing.update(one.branch for one in groups)
+
+    def hold(self, one: Group, reason: str) -> None:
+        """Hold every update of *one* back, with *reason*."""
+        self.held += [Held(update, reason) for update in one.updates]
+        self.missing.add(one.branch)
+
+
+def _perform(run: _Run, groups: list[Group]) -> _Outcome:
     """
-    Apply each group in turn, as far as *mode* says.
+    Apply each group in turn, as far as the run's mode says, and return what was not applied.
 
     A group that cannot be applied is reported and passed over, and the groups after it are still
     applied. Each group is its own commit and its own set of files, so one of them failing says
@@ -207,25 +243,29 @@ def _perform(
     A git failure is the exception: it leaves that group staged, and the next commit would take it
     in under another message. The run stops there, and the groups not tried count as failed.
 
-    Returns the groups that failed, for the caller to exit on, and the groups that could not lock,
-    which are held back rather than failed: the edit is sound, the dependency tree is not ready.
+    A group that could not lock is held back rather than failed: the edit is sound, the dependency
+    tree is not ready. So is a group rebased onto a branch that was not applied, since the text it
+    looks for was never written.
     """
-    failed: list[Group] = []
-    unsolved: list[Group] = []
+    outcome = _Outcome()
     for index, one in enumerate(groups):
+        missing = next((branch for branch in one.after if branch in outcome.missing), None)
+        if missing is not None:
+            outcome.hold(one, held_rebased(missing))
+            continue
         try:
-            _perform_group(root, one, prefix=prefix, mode=mode, lock=lock)
+            _perform_group(run, one)
         except NoSolutionError as error:
-            subject = message(one, prefix)[0]
+            subject = message(one, run.prefix)[0]
             err.print(f"renovate-apply: {subject} does not lock, undone. {error}", style="yellow")
-            unsolved.append(one)
+            outcome.hold(one, HELD_NO_SOLUTION)
         except RenovateApplyError as error:
             err.print(f"renovate-apply: {error}", style="red")
-            failed.append(one)
+            outcome.fail([one])
             if isinstance(error, GitError):
-                failed += _stop(groups[index + 1 :])
+                outcome.fail(_stop(groups[index + 1 :]))
                 break
-    return failed, unsolved
+    return outcome
 
 
 def _stop(rest: list[Group]) -> list[Group]:
@@ -235,14 +275,15 @@ def _stop(rest: list[Group]) -> list[Group]:
     return rest
 
 
-def _perform_group(root: Path, one: Group, *, prefix: str, mode: Mode, lock: bool) -> None:
-    """Apply one group, then lock, stage, or commit it as *mode* says."""
-    paragraphs = message(one, prefix)
+def _perform_group(run: _Run, one: Group) -> None:
+    """Apply one group, then lock, stage, or commit it as the run's mode says."""
+    root, mode = run.root, run.mode
+    paragraphs = message(one, run.prefix)
     originals = snapshot(root, one.package_files)
-    package_files = apply_group(root, one, write=mode is not Mode.DRY_RUN)
+    package_files = apply_group(root, one, drafts=run.drafts)
     # The lock file is refreshed before the commit, so the manifest and the lock file that matches
     # it are one commit, which is how Renovate's own pull request carries them.
-    locks = _relock(root, one, originals) if lock and mode is not Mode.DRY_RUN else ()
+    locks = _relock(root, one, originals) if run.lock and mode is not Mode.DRY_RUN else ()
     out.print("would apply  " if mode is Mode.DRY_RUN else "applied  ", style="dim", end="")
     out.print(paragraphs[0], style="bold")
     for name, moved in moves(one):

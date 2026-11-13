@@ -98,10 +98,17 @@ def hook_update(**overrides: object) -> Update:
 
 
 def report_for(*updates: Update) -> dict[str, Any]:
-    """Build a Renovate report holding *updates*, nested the way the real one is."""
+    """
+    Build a Renovate report holding *updates*, nested the way the real one is.
+
+    Updates of one line (same dependency, same text, same ``dep_index``) share one dependency entry,
+    as Renovate lists every update of a line under it. Set ``dep_index`` to make two lines.
+    """
     package_files: dict[str, list[dict[str, object]]] = {}
+    deps_of: dict[tuple[str, str], list[dict[str, object]]] = {}
+    updates_of: dict[tuple[object, ...], list[dict[str, object]]] = {}
     for update in updates:
-        entry: dict[str, object] = {
+        line: dict[str, object] = {
             "depName": update.dep_name,
             "packageName": update.package_name,
             "currentValue": update.current_value,
@@ -109,25 +116,33 @@ def report_for(*updates: Update) -> dict[str, Any]:
             "replaceString": update.replace_string,
             "autoReplaceStringTemplate": update.replace_template,
             "lockedVersion": update.locked_version,
-            "updates": [
-                {
-                    "updateType": update.update_type,
-                    "branchName": update.branch_name,
-                    "newValue": update.new_value,
-                    "newDigest": update.new_digest,
-                    "newName": update.new_name,
-                    "isVulnerabilityAlert": update.is_security,
-                    "pendingChecks": update.pending,
-                    "isLockfileUpdate": update.is_lockfile_update,
-                    "newVersion": update.new_version,
-                },
-            ],
         }
-        _add(
-            package_files.setdefault(update.manager, []),
-            update.package_file,
-            entry,
-            update.lock_files,
+        where = (update.manager, update.package_file)
+        if where not in deps_of:
+            deps_of[where] = []
+            package_files.setdefault(update.manager, []).append(
+                {
+                    "packageFile": update.package_file,
+                    "lockFiles": list(update.lock_files),
+                    "deps": deps_of[where],
+                },
+            )
+        key = (*where, *line.values(), update.dep_index)
+        if key not in updates_of:
+            updates_of[key] = []
+            deps_of[where].append({**line, "updates": updates_of[key]})
+        updates_of[key].append(
+            {
+                "updateType": update.update_type,
+                "branchName": update.branch_name,
+                "newValue": update.new_value,
+                "newDigest": update.new_digest,
+                "newName": update.new_name,
+                "isVulnerabilityAlert": update.is_security,
+                "pendingChecks": update.pending,
+                "isLockfileUpdate": update.is_lockfile_update,
+                "newVersion": update.new_version,
+            },
         )
     return {
         "problems": [],
@@ -135,22 +150,6 @@ def report_for(*updates: Update) -> dict[str, Any]:
             "local": {"problems": [], "branches": [], "packageFiles": package_files},
         },
     }
-
-
-def _add(
-    files: list[dict[str, object]],
-    package_file: str,
-    entry: dict[str, object],
-    lock_files: tuple[str, ...] = (),
-) -> None:
-    """Put a dependency under its package file, adding the file the first time it is seen."""
-    for existing in files:
-        if existing["packageFile"] == package_file:
-            deps = existing["deps"]
-            assert isinstance(deps, list)
-            deps.append(entry)
-            return
-    files.append({"packageFile": package_file, "lockFiles": list(lock_files), "deps": [entry]})
 
 
 WORKFLOW = """\

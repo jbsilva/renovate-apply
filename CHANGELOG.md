@@ -18,6 +18,14 @@ All notable changes to this project are documented here. The format is based on
 - A group with nothing left to commit, because an earlier group of the run already made its change,
   is reported and passed over instead of failing the run.
 
+### Fixed
+
+- With `--major`, a dependency with a minor and a major on two branches no longer fails the major's
+  group with "Was it already updated?". As after a Renovate rebase, the major is applied on top of
+  the minor, in a second commit. Each later step of one line is applied on top of the step before
+  it. For example, a minor follows a patch, and a major follows another major. Any other pair of
+  updates to one line on two branches holds the later one.
+
 ## [0.1.1] - 2026-10-11
 
 ### Fixed

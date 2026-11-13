@@ -17,7 +17,12 @@ lazy from renovate_apply.models import Group, Update
 ENCODING = "utf-8"
 
 
-def apply_group(root: Path, group: Group, *, write: bool = True) -> tuple[str, ...]:
+def apply_group(
+    root: Path,
+    group: Group,
+    *,
+    drafts: dict[str, str] | None = None,
+) -> tuple[str, ...]:
     """
     Make every edit of *group*, and return the package files it touched.
 
@@ -26,44 +31,43 @@ def apply_group(root: Path, group: Group, *, write: bool = True) -> tuple[str, .
     group was reported as failed, and the next group to touch it would stage and commit the edit
     under its own message.
 
-    With ``write=False`` every edit is still computed, so a file the report no longer matches fails
-    here as loudly as it would when writing. That is what makes a dry run worth reading.
+    With *drafts*, nothing is written: the edited texts go into *drafts* and are read back from it,
+    so a later group of a dry run finds what an earlier one would have written.
     """
-    edited: list[tuple[Path, str]] = []
+    edited: list[tuple[str, str]] = []
     for package_file in group.package_files:
-        path = root / package_file
         # A lock file update has no text in the package file; the package manager moves it.
         mine = [
             update
             for update in group.updates
             if update.package_file == package_file and not update.is_lockfile_update
         ]
-        edited.append((path, apply_all(_read(path), mine)))
-    if write:
-        for path, text in edited:
-            _write(path, text)
+        known = drafts or {}
+        text = known[package_file] if package_file in known else _read(root / package_file)
+        edited.append((package_file, apply_all(text, mine)))
+    for package_file, text in edited:
+        if drafts is None:
+            _write(root / package_file, text)
+        else:
+            drafts[package_file] = text
     return group.package_files
 
 
-def split_repeats(
-    root: Path,
-    updates: Sequence[Update],
-) -> tuple[list[Update], list[tuple[Update, Update]]]:
+def repeats_of(root: Path, updates: Sequence[Update]) -> list[Update | None]:
     """
-    Split off each update that makes the same edit as one before it, found by another manager.
+    Return, for each update, the earlier one it repeats: the same edit, found by another manager.
 
-    Returns the updates to keep, and each repeat paired with the update it repeats.
+    None stands for an update that repeats nothing. The list lines up with *updates*.
     """
     kept: list[Update] = []
-    repeats: list[tuple[Update, Update]] = []
+    firsts: list[Update | None] = []
     texts: dict[str, str] = {}
     for update in updates:
         first = next((one for one in kept if _same_edit(root, texts, one, update)), None)
         if first is None:
             kept.append(update)
-        else:
-            repeats.append((update, first))
-    return kept, repeats
+        firsts.append(first)
+    return firsts
 
 
 def _same_edit(root: Path, texts: dict[str, str], first: Update, second: Update) -> bool:

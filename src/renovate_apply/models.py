@@ -6,7 +6,7 @@ found for it. Everything below flattens that into one ``Update`` per thing to ch
 after ``report`` has to know the report's shape.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
 
@@ -81,6 +81,13 @@ class Update:
     lock_files: tuple[str, ...] = ()
     """The lock files Renovate found for the package file, relative to the repository root."""
 
+    dep_index: int | None = field(default=None, compare=False)
+    """
+    Where the dependency sits in its package file's list in the report: one line of the file.
+
+    Two lines can hold the same text, and this is the only thing that tells them apart.
+    """
+
     @property
     def current(self) -> str:
         """Return what the file says now, for display; the locked version for a lock update."""
@@ -124,6 +131,8 @@ class Group:
 
     branch: str
     updates: tuple[Update, ...]
+    after: tuple[str, ...] = ()
+    """The branches whose edits this group's rebased updates look for."""
 
     @property
     def package_files(self) -> tuple[str, ...]:

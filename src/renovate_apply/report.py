@@ -7,11 +7,13 @@ loudly in this one module instead of halfway through an edit.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
 from fnmatch import fnmatchcase
 
-from renovate_apply.errors import ReportError
+from renovate_apply.errors import ReplaceError, ReportError
 from renovate_apply.lockfiles import can_move_in_lock
 from renovate_apply.models import Group, Held, Update
+from renovate_apply.replace import search_and_replacement
 
 
 # The local platform always names the one repository it reads "local".
@@ -35,6 +37,11 @@ def held_repeat(first: Update) -> str:
 def held_collision(first: Update) -> str:
     """Return why a collision with *first* is held: Renovate's branch carries *first* instead."""
     return f"{first.branch_name} updates the same text to {first.target}"
+
+
+def held_rebased(branch: str) -> str:
+    """Return why an update rebased onto *branch* is held: the text it looks for was not written."""
+    return f"rebased onto {branch}, which was not applied"
 
 
 def problems(report: Mapping[str, object]) -> list[str]:
@@ -110,12 +117,152 @@ def split_collisions(
     return kept, collisions
 
 
-def group(updates: Sequence[Update]) -> list[Group]:
-    """Gather the updates by the branch Renovate would have opened, which is one commit each."""
+def chain_branches(
+    updates: Sequence[Update],
+    repeats: Sequence[Update | None] = (),
+) -> tuple[list[Update], list[tuple[Update, Update]], list[tuple[str, str]]]:
+    """
+    Rebase a version update onto the update of another branch that rewrites the same use before it.
+
+    Renovate can open a pull request for each step of one dependency: the next patch, minor, and
+    major, from the same line, in ascending order. Merge one and the next rebases, to move on from
+    where the first left the line. Applied in one run, the groups are those merges in turn, so each
+    later step is rebased the same way: it looks for the text the step before it writes.
+
+    Anything else across two branches has no order to follow, and the later one is held. A lock file
+    update writes no text in the manifest, so it takes no part in a chain.
+
+    A repeat of another manager's update stands in for it in the line's chain. A repeat of an update
+    held here is held too, since the edit it repeats is never made.
+
+    Returns the updates to apply, rebased where needed, each held one paired with the update that
+    rewrites its text first, and each rebase as a pair of branches, the one that must go first, then
+    the one rebased onto it.
+    """
+    kept: list[Update] = []
+    held: list[tuple[Update, Update]] = []
+    order: list[tuple[str, str]] = []
+    chains: dict[_Use, list[_Link]] = {}
+    held_by: dict[int, Update] = {}
+    for update, first in zip(updates, repeats or [None] * len(updates), strict=True):
+        if first is not None and id(first) in held_by:
+            held.append((update, held_by[id(first)]))
+            continue
+        if first is not None:
+            stand_in = replace(update, branch_name=first.branch_name)
+            chains.setdefault(_use(update), []).append(_Link(stand_in))
+            continue
+        if update.is_lockfile_update:
+            kept.append(update)
+            continue
+        chain = chains.setdefault(_use(update), [])
+        same = next((link for link in chain if link.update.branch_name == update.branch_name), None)
+        if same is not None:
+            # A second use of the line in one branch moves on from the same update as the first.
+            kept.append(update if same.onto is None else _rebase(update, same.onto))
+            continue
+        link = _next_link(update, chain)
+        if link is None:
+            held.append((update, chain[0].update))
+            held_by[id(update)] = chain[0].update
+            continue
+        kept.append(link.update)
+        chain.append(link)
+        if link.onto is not None:
+            order.append((link.onto.branch_name, update.branch_name))
+    return kept, held, order
+
+
+@dataclass(frozen=True, slots=True)
+class _Link:
+    """One branch's update of a use, and the update it was rebased onto, if any."""
+
+    update: Update
+    onto: Update | None = None
+
+
+type _Use = tuple[str, str, str, str | None, str | None, str | None, int | None]
+
+# The update types that move to a new version, smallest step first. A step chains only onto a step
+# no larger than itself, so a report out of order holds an update instead of writing a downgrade.
+_STEP_RANK = {"patch": 1, "minor": 2, "major": 3}
+
+
+def _use(update: Update) -> _Use:
+    """Return what identifies one line of a dependency: where it is, and the text it holds."""
+    return (
+        update.manager,
+        update.package_file,
+        update.dep_name,
+        update.current_value,
+        update.current_digest,
+        update.replace_string,
+        update.dep_index,
+    )
+
+
+def _next_link(update: Update, chain: Sequence[_Link]) -> _Link | None:
+    """Return *update* as the next link of its use's *chain*, or None when it is held."""
+    if not chain:
+        return _Link(update)
+    onto = chain[-1].update
+    rank = _STEP_RANK.get(update.update_type, 0)
+    if rank < max(_STEP_RANK.get(onto.update_type, 0), 1) or update.target == onto.target:
+        return None
+    try:
+        return _Link(_rebase(update, onto), onto)
+    except ReplaceError:
+        # The update before it cannot be rendered. Its own group fails, and says why.
+        return None
+
+
+def _rebase(update: Update, first: Update) -> Update:
+    """Return *update* as it reads once *first* has rewritten its text."""
+    return replace(
+        update,
+        current_value=first.new_value or update.current_value,
+        current_digest=first.new_digest or update.current_digest,
+        replace_string=(
+            None if update.replace_string is None else search_and_replacement(first)[1]
+        ),
+    )
+
+
+def group(updates: Sequence[Update], after: Sequence[tuple[str, str]] = ()) -> list[Group]:
+    """
+    Gather the updates by the branch Renovate would have opened, which is one commit each.
+
+    The groups keep the order the report gives, except that for each pair in *after* the second
+    branch goes after the first, which is what a rebased update needs to find its text.
+    """
     branches: dict[str, list[Update]] = {}
     for update in updates:
         branches.setdefault(update.branch_name, []).append(update)
-    return [Group(branch, tuple(members)) for branch, members in branches.items()]
+    waits: dict[str, tuple[str, ...]] = {}
+    for before, later in after:
+        waits[later] = (*waits.get(later, ()), before)
+    return [
+        Group(branch, tuple(branches[branch]), waits.get(branch, ()))
+        for branch in _ordered(list(branches), waits)
+    ]
+
+
+def _ordered(branches: list[str], waits: Mapping[str, Sequence[str]]) -> list[str]:
+    """
+    Order *branches* so each one comes after the branches it waits for, and otherwise as given.
+
+    A cycle has no right order, so the first branch left is taken. Its rebased update then fails
+    with the file not holding its text, which names the dependency.
+    """
+    done: dict[str, None] = {}
+    while branches:
+        ready = next(
+            (one for one in branches if all(before in done for before in waits.get(one, ()))),
+            branches[0],
+        )
+        branches.remove(ready)
+        done[ready] = None
+    return list(done)
 
 
 def _hold_reason(
@@ -172,9 +319,9 @@ def _iter_file_updates(manager: str, entry: Mapping[str, object]) -> Iterator[Up
         for found in map(_text, _sequence(entry.get("lockFiles"), f"{package_file} lockFiles"))
         if found
     )
-    for dep in _sequence(entry.get("deps"), f"{package_file} deps"):
+    for dep_index, dep in enumerate(_sequence(entry.get("deps"), f"{package_file} deps")):
         if isinstance(dep, Mapping):
-            yield from _iter_dep_updates(manager, package_file, dep, lock_files)
+            yield from _iter_dep_updates(manager, package_file, dep, lock_files, dep_index)
 
 
 def _iter_dep_updates(
@@ -182,6 +329,7 @@ def _iter_dep_updates(
     package_file: str,
     dep: Mapping[str, object],
     lock_files: tuple[str, ...] = (),
+    dep_index: int | None = None,
 ) -> Iterator[Update]:
     """Yield one Update per update found for a single dependency."""
     name = _text(dep.get("depName")) or _text(dep.get("packageName"))
@@ -210,6 +358,7 @@ def _iter_dep_updates(
             new_version=_text(raw.get("newVersion")),
             locked_version=_text(dep.get("lockedVersion")),
             lock_files=lock_files,
+            dep_index=dep_index,
         )
 
 

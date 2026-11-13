@@ -124,6 +124,45 @@ Held back:
   docker -> 29.8.2-cli, new digest (renovate/stack-images updates the same text to 29.9.0-cli)
 ```
 
+## One line that two branches update
+
+With `--major`, one line can have two updates on two branches: the next minor and the next major.
+For example, `serverless-domain-manager` at `10.3.1` can go to `10.5.1` and to `11.0.1`. Renovate
+opens two pull requests. After you merge the minor one, Renovate rebases the major one onto it.
+
+This tool does the same. The minor is committed first. Then the major is applied to the line that
+the minor wrote, and it is committed as a second step:
+
+```console
+applied  deps: update non-major
+    serverless-domain-manager  10.3.1 -> 10.5.1
+applied  deps: update serverless-domain-manager to 11.0.1
+    serverless-domain-manager  10.5.1 -> 11.0.1
+```
+
+The other steps of one line follow each other in the same way. For example, Renovate opens one
+branch for each major with `separateMultipleMajor`, and a patch branch before the minor branch with
+`separateMinorPatch`. Each step is applied to the line that the step before it wrote.
+
+A lock file update does not change the line in `package.json`, so it is not part of these steps.
+
+If the group of the minor fails or is held, the major has no line to apply to. The major is then
+held too:
+
+```console
+Held back:
+  serverless-domain-manager -> 11.0.1 (rebased onto renovate/non-major, which was not applied)
+```
+
+Any other pair of updates to one line on two branches has no order to follow. For example, the major
+comes before the minor in the report, or the second update is a new digest of the current version.
+The first update is applied, and the second is held:
+
+```console
+Held back:
+  serverless-domain-manager -> 10.5.1 (renovate/major-serverless-domain-manager updates the same text to 11.0.1)
+```
+
 ## Anything named in `--skip`
 
 Your answer to the same blind spot as majors, for updates that are not majors:
