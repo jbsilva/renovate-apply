@@ -142,7 +142,7 @@ This tool does the same. The minor is committed first. Then the major is applied
 the minor wrote, and it is committed as a second step:
 
 ```console
-applied  deps: update non-major
+applied  deps: update serverless-domain-manager to 10.5.1
     serverless-domain-manager  10.3.1 -> 10.5.1
 applied  deps: update serverless-domain-manager to 11.0.1
     serverless-domain-manager  10.5.1 -> 11.0.1

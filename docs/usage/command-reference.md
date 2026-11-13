@@ -38,8 +38,9 @@ renovate-apply: /code/repo/services is inside the repository at /code/repo. Reno
 
 Compute every edit, write nothing. Default off.
 
-Use it first. It reports the same errors a real run would, so a dry run that passes is a good sign
-the real one will too.
+Use it first. It reports every edit that cannot be made, as a real run does. It does not run uv or
+npm, so it does not find a missing package manager, a missing lock file, or a lock file with no
+solution. A real run reports those.
 
 ### `--no-commit`
 
