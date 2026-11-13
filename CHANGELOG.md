@@ -29,6 +29,10 @@ All notable changes to this project are documented here. The format is based on
   `uv.lock` beside an edited `pyproject.toml` stopped the run when `git add` refused it, and an
   untracked one entered the commit as a new file. A lock file update for such a file is held back.
 
+- A replacement template that uses `{{packageName}}` now gets the package name from the report.
+  Before, it got the dependency name, so a regex manager that names a dependency apart from its
+  image wrote the wrong image.
+
 ## [0.1.1] - 2026-10-11
 
 ### Fixed

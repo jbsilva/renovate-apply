@@ -58,7 +58,7 @@ def template_values(update: Update) -> dict[str, str | None]:
     """Return the fields a replacement template can name, as Renovate names them."""
     return {
         "depName": update.dep_name,
-        "packageName": update.dep_name,
+        "packageName": update.package_name or update.dep_name,
         "currentValue": update.current_value,
         "currentDigest": update.current_digest,
         "newValue": update.new_value,

@@ -179,6 +179,22 @@ def test_search_and_replacement_refuses_an_update_with_nothing_to_find() -> None
         search_and_replacement(update)
 
 
+def test_search_and_replacement_writes_the_package_name_the_template_asks_for() -> None:
+    """A regex manager can name a dependency apart from the image it pulls."""
+    update = docker_update(
+        manager="regex",
+        dep_name="bar",
+        package_name="ghcr.io/foo/bar",
+        replace_string="image: ghcr.io/foo/bar:1.0",
+        replace_template="image: {{{packageName}}}:{{{newValue}}}",
+        current_value="1.0",
+        new_value="1.1",
+        current_digest=None,
+        new_digest=None,
+    )
+    assert search_and_replacement(update)[1] == "image: ghcr.io/foo/bar:1.1"
+
+
 def test_apply_to_text_replaces_the_first_match_only() -> None:
     """Two identical references are two updates; each run moves one of them."""
     text = "a: x:1@sha256:aaaa\nb: x:1@sha256:aaaa\n"
