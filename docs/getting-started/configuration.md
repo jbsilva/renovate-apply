@@ -25,17 +25,19 @@ major = true
 The key is the flag name without its dashes, so `--no-lock` is `lock = false`. Underscores work too,
 if you prefer `dry_run` to `dry-run`.
 
-| Key                | Type           | Default   | Flag                 |
-| ------------------ | -------------- | --------- | -------------------- |
-| `dry-run`          | boolean        | `false`   | `--dry-run`          |
-| `commit`           | boolean        | `true`    | `--no-commit`        |
-| `stage`            | boolean        | `false`   | `--stage`            |
-| `major`            | boolean        | `false`   | `--major`            |
-| `lock`             | boolean        | `true`    | `--no-lock`          |
-| `skip`             | list of string | empty     | `--skip`             |
-| `prefix`           | string         | `"deps:"` | `--prefix`           |
-| `renovate-version` | string         | unset     | `--renovate-version` |
-| `token`            | string         | unset     | `--token`            |
+| Key       | Type           | Default   | Flag          |
+| --------- | -------------- | --------- | ------------- |
+| `dry-run` | boolean        | `false`   | `--dry-run`   |
+| `commit`  | boolean        | `true`    | `--no-commit` |
+| `stage`   | boolean        | `false`   | `--stage`     |
+| `major`   | boolean        | `false`   | `--major`     |
+| `lock`    | boolean        | `true`    | `--no-lock`   |
+| `skip`    | list of string | empty     | `--skip`      |
+| `prefix`  | string         | `"deps:"` | `--prefix`    |
+
+`--renovate-version` and `--token` are not read from the file. The repository you update can be
+anyone's, so its settings must not choose the package that `npx` runs or the token Renovate uses. If
+the file sets one of them, the run prints a warning and ignores it.
 
 !!! note
 

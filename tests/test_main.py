@@ -192,6 +192,31 @@ def test_defaults_come_from_the_repository_being_updated(
     assert subjects(repo)[-1] == "target: update ghcr.io/atuinsh/atuin to 18.22.0"
 
 
+def test_the_repository_cannot_pick_the_renovate_package_or_the_token(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A checked-in "npm:evil@1" would make npx run another package, with the user's token."""
+    (repo / "pyproject.toml").write_text(
+        '[tool.renovate-apply]\nrenovate_version = "npm:evil@1"\ntoken = "theirs"\n',
+        encoding="utf-8",
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-m", "add settings")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    seen: dict[str, object] = {}
+
+    def scan(_root: Path, **kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return report_for(docker_update())
+
+    monkeypatch.setattr(main_module, "scan", scan)
+    assert run_cli(str(repo)) == 0
+    assert seen == {"version": None, "token": None}
+    assert "ignoring renovate_version" in capsys.readouterr().err
+
+
 def test_a_flag_beats_the_file(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The file holds defaults, so what is typed for one run wins over it."""
     write_prefix(repo, "target:")

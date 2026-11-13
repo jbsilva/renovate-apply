@@ -10,7 +10,9 @@ The settings belong to the repository being updated, so the path is taken from t
 argument instead. Configuration sources run after the arguments are parsed, so it is already known.
 """
 
+import sys
 from pathlib import Path
+from typing import Any
 
 # Not ``from cyclopts import config``: the stub re-exports its own submodules, and pycroscope's
 # typeshed reader recurses forever on that self-reference.
@@ -21,6 +23,9 @@ lazy from cyclopts.argument import ArgumentCollection
 
 MANIFEST = "pyproject.toml"
 SECTION = ("tool", "renovate-apply")
+
+# The repository being updated may be anyone's, so it must not pick the code npx runs or the token.
+USER_ONLY = frozenset({"renovate-version", "token"})
 
 
 class TargetToml(Toml):
@@ -37,6 +42,19 @@ class TargetToml(Toml):
         # process, and a path kept from the last one would answer for the next.
         self.path = _target(arguments) / MANIFEST
         super().__call__(app, commands, arguments)
+
+    def _load_config(self, path: Path) -> dict[str, Any]:
+        """Read the manifest, leaving out the settings only the person running this may give."""
+        loaded = super()._load_config(path)
+        section = loaded.get(SECTION[0], {}).get(SECTION[1])
+        if isinstance(section, dict):
+            for key in [key for key in section if key.replace("_", "-") in USER_ONLY]:
+                del section[key]
+                print(  # noqa: T201 - a warning before the command's own console exists
+                    f"renovate-apply: ignoring {key} in {path}; pass it on the command line",
+                    file=sys.stderr,
+                )
+        return loaded
 
 
 def repository_defaults() -> TargetToml:

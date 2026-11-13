@@ -4,6 +4,7 @@ atuinsh
 capsys
 configfile
 cyclopts
+delenv
 Dockerfiles
 docstrings
 EDITMSG
