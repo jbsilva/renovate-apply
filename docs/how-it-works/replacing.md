@@ -142,6 +142,11 @@ ended. So:
 - A repeat with nothing left to find is a line this run already updated, not an error. A Dockerfile
     `ARG` that two `FROM` stages share is two dependencies over one line.
 
+A copy counts only where it stands on its own: `redis:7.2` inside `bitnami/redis:7.2` belongs to
+another image, and `a/b@v5` at the start of `a/b@v5.1.0` is another version. If the file holds more
+copies than the group edits, for example a comment that names `node:20` above `FROM node:20`, the
+run stops for that group. It cannot know which copy the report means.
+
 ## All or nothing, per group
 
 Every edit of a group is computed before any of them is written. A group that fails on its second

@@ -23,7 +23,7 @@ from collections import Counter
 lazy from collections.abc import Mapping, Sequence
 
 from renovate_apply.errors import ReplaceError
-from renovate_apply.placing import copies, name_key, section_key
+from renovate_apply.placing import copies, name_key, section_key, whole_copies
 lazy from renovate_apply.models import Update
 
 
@@ -108,12 +108,13 @@ def same_edit(
     if first.manager == second.manager or first.package_file != second.package_file:
         return False
     try:
-        return apply_all(text, [first] * uses[0]) == apply_all(text, [second] * uses[1])
+        one = apply_all(text, [first] * uses[0], count=False)
+        return one == apply_all(text, [second] * uses[1], count=False)
     except ReplaceError:
         return False
 
 
-def apply_all(text: str, updates: Sequence[Update]) -> str:
+def apply_all(text: str, updates: Sequence[Update], *, count: bool = True) -> str:
     """
     Return *text* with every one of *updates* made, in the order the report gave them.
 
@@ -122,6 +123,9 @@ def apply_all(text: str, updates: Sequence[Update]) -> str:
     same ``replaceString``. Each repeat therefore looks on from where the edit before it ended. A
     string that really is in the file twice is edited twice, and a repeat with nothing left to find
     is a line this run already updated, not a file that moved underneath the report.
+
+    Without *count*, the copies are not counted against the edits, for a caller that asks what one
+    use of a text would become.
     """
     planned = [(update, *search_and_replacement(update)) for update in updates]
     # One key per section, so a search in devDependencies never resumes into peerDependencies.
@@ -132,7 +136,7 @@ def apply_all(text: str, updates: Sequence[Update]) -> str:
     edits = Counter(keys)
     resume: dict[tuple[str, str | None, str, str], int] = {}
     for (update, search, replacement), key in zip(planned, keys, strict=True):
-        at = _locate(text, update, search, resume.get(key), edits=edits[key])
+        at = _locate(text, update, search, resume.get(key), edits=edits[key] if count else None)
         if at is None:
             continue
         text = text[:at] + replacement + text[at + len(search) :]
@@ -173,7 +177,7 @@ def _locate(
     search: str,
     resume: int | None,
     *,
-    edits: int = 1,
+    edits: int | None = 1,
 ) -> int | None:
     """
     Return where the text to replace starts, refusing to guess when it is not there.
@@ -182,13 +186,14 @@ def _locate(
     Once one edit has been made, the text being gone means the repeat has nothing left to do, which
     is None. Not finding it on the first try is a file the report no longer describes.
 
-    A bare version found in more places than *edits*, the updates making this same edit, stops: the
-    report's order is not the file's, so which copy is this update's is a guess.
+    Text found in more places than *edits*, the updates making this same edit, stops: the report's
+    order is not the file's, so which copy is this update's is a guess. A bare version also stops
+    when it is found in fewer places.
     """
     start = 0 if resume is None else resume
     if update.replace_string is None:
         found = copies(text, update, search, start)
-        if resume is None and found and len(found) != edits:
+        if resume is None and edits is not None and found and len(found) != edits:
             msg = (
                 f"{update.dep_name}: {search!r} follows the name {update.dep_name!r} {len(found)} "
                 f"times in {update.package_file}, and this group edits {edits} of them, so it is "
@@ -197,7 +202,14 @@ def _locate(
             raise ReplaceError(msg)
         at = found[0] if found else -1
     else:
-        at = text.find(search, start)
+        found = whole_copies(text, search, start)
+        if resume is None and edits is not None and len(found) > edits:
+            msg = (
+                f"{update.dep_name}: {search!r} is in {update.package_file} {len(found)} times, "
+                f"and this group edits {edits} of them, so it is not clear which ones to edit."
+            )
+            raise ReplaceError(msg)
+        at = found[0] if found else -1
     if at >= 0:
         return at
     if resume is not None:

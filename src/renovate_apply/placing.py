@@ -27,6 +27,9 @@ _VERSION_CHARS = frozenset("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP
 
 _VERSION_DIGITS = frozenset("0123456789.")
 
+# What an image or action name is made of, so a match right after one is the tail of another name.
+_TOKEN_CHARS = frozenset("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ./_-@:")
+
 # A bare number right after one of these is the bound of a range, not a version of its own.
 _RANGE_OPERATORS = frozenset("^~<>=!")
 
@@ -69,6 +72,25 @@ def copies(text: str, update: Update, search: str, start: int) -> list[int]:
             if _whole_version(text, search, at) and _belongs_to(text, update, at, begin):
                 found.append(at)
             at = text.find(search, at + 1, high)
+    return found
+
+
+def whole_copies(text: str, search: str, start: int) -> list[int]:
+    """
+    Return every place from *start* where *search* stands on its own, not inside a longer token.
+
+    redis:7.2 inside bitnami/redis:7.2 belongs to another image, and image@v5 at the start of
+    image@v5.1.0 is another version.
+    """
+    found: list[int] = []
+    at = text.find(search, start)
+    while at >= 0:
+        after = at + len(search)
+        joined_before = search[0].isalnum() and at > 0 and text[at - 1] in _TOKEN_CHARS
+        joined_after = search[-1].isalnum() and after < len(text) and text[after] in _VERSION_CHARS
+        if not (joined_before or joined_after):
+            found.append(at)
+        at = text.find(search, at + 1)
     return found
 
 

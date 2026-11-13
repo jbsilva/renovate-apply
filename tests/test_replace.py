@@ -220,8 +220,8 @@ def test_search_and_replacement_writes_the_package_name_the_template_asks_for() 
     assert search_and_replacement(update)[1] == "image: ghcr.io/foo/bar:1.1"
 
 
-def test_apply_to_text_replaces_the_first_match_only() -> None:
-    """Two identical references are two updates; each run moves one of them."""
+def test_apply_to_text_refuses_one_update_for_two_copies() -> None:
+    """Two identical references are two dependencies, so one update for them is a guess."""
     text = "a: x:1@sha256:aaaa\nb: x:1@sha256:aaaa\n"
     update = docker_update(
         dep_name="x",
@@ -230,7 +230,59 @@ def test_apply_to_text_replaces_the_first_match_only() -> None:
         new_value="2",
         new_digest="sha256:cccc",
     )
-    assert apply_to_text(text, update) == "a: x:2@sha256:cccc\nb: x:1@sha256:aaaa\n"
+    with pytest.raises(ReplaceError, match="not clear which ones"):
+        apply_to_text(text, update)
+    assert apply_all(text, [update, update]) == "a: x:2@sha256:cccc\nb: x:2@sha256:cccc\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "search", "expected"),
+    [
+        pytest.param(
+            "a: bitnami/redis:7.2\nb: redis:7.2\n",
+            "redis:7.2",
+            "a: bitnami/redis:7.2\nb: redis:7.4\n",
+            id="tail-of-another-image",
+        ),
+        pytest.param(
+            "- uses: a/b@v5.1.0\n- uses: a/b@v5\n",
+            "a/b@v5",
+            "- uses: a/b@v5.1.0\n- uses: a/b@v7.4\n",
+            id="start-of-a-longer-version",
+        ),
+    ],
+)
+def test_apply_to_text_edits_text_that_stands_on_its_own(
+    text: str, search: str, expected: str
+) -> None:
+    """A replaceString inside a longer name or version is not this dependency's line."""
+    old = search.rsplit(":", 1)[-1].rsplit("@", 1)[-1]
+    update = docker_update(
+        dep_name=search,
+        replace_string=search,
+        replace_template=None,
+        current_value=old,
+        new_value="7.4" if old == "7.2" else "v7.4",
+        current_digest=None,
+        new_digest=None,
+    )
+    assert apply_to_text(text, update) == expected
+
+
+def test_apply_to_text_refuses_text_also_in_a_comment() -> None:
+    """A comment that names the image is a second copy the report does not list."""
+    text = "# based on node:20\nFROM node:20\n"
+    update = docker_update(
+        dep_name="node",
+        replace_string="node:20",
+        replace_template=None,
+        current_value="20",
+        new_value="22",
+        current_digest=None,
+        new_digest=None,
+    )
+    with pytest.raises(ReplaceError, match="not clear which ones"):
+        apply_to_text(text, update)
 
 
 def test_apply_to_text_anchors_a_bare_version_on_the_dependency_name() -> None:
